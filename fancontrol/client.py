@@ -26,7 +26,7 @@ class DaemonClient:
                 "'sudo dnf install python3-dasbus'."
             ) from exc
 
-        from .daemon.dbus_service import BUS_NAME, OBJECT_PATH
+        from .dbus_names import BUS_NAME, OBJECT_PATH
 
         bus = SessionMessageBus() if session else SystemMessageBus()
         try:

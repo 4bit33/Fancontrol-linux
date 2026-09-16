@@ -25,13 +25,10 @@ from dasbus.loop import EventLoop
 from dasbus.server.interface import dbus_interface, dbus_signal
 from dasbus.typing import Bool, Double, Str
 
+from ..dbus_names import BUS_NAME, INTERFACE, OBJECT_PATH
 from .service import FanControlService, fail
 
 log = logging.getLogger(__name__)
-
-BUS_NAME = "org.fancontrol.Daemon"
-OBJECT_PATH = "/org/fancontrol/Daemon"
-INTERFACE = "org.fancontrol.Daemon1"
 
 
 def _dumps(payload: Any) -> str:
