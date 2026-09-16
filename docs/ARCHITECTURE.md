@@ -135,3 +135,6 @@ No real hardware is involved:
   at 85 °C, runs 200 ticks of the real control loop, and asserts the
   temperature came down.
 * The GUI tests run under Qt's offscreen platform.
+* `test_dbus_interface.py` asserts the introspection XML dasbus generates,
+  which catches signature mistakes that would otherwise only surface when the
+  daemon tries to register on the bus.

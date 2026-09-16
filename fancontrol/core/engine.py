@@ -80,6 +80,9 @@ class ControlEngine:
         #: Controls the user is temporarily driving by hand from the UI,
         #: mapped to the percentage they asked for. Cleared on release.
         self.overrides: dict[str, float] = {}
+        #: Controls the loop must not touch at all, because something else is
+        #: driving them directly - currently only the calibration routine.
+        self.paused: set[str] = set()
 
     # ------------------------------------------------------------------
     # configuration
@@ -110,6 +113,28 @@ class ControlEngine:
             self.overrides.pop(control_id, None)
         else:
             self.overrides[control_id] = clamp(percent, 0.0, 100.0)
+
+    # ------------------------------------------------------------------
+    # pausing
+
+    def pause(self, control_id: str) -> None:
+        """Stop writing to a control so something else can drive it.
+
+        Without this the loop keeps writing its own value every tick and fights
+        whatever set the PWM, which is exactly what calibration does.
+        """
+
+        self.paused.add(control_id)
+
+    def resume(self, control_id: str) -> None:
+        runtime = self.runtime.get(control_id)
+        if runtime is not None:
+            # The hardware is wherever the other writer left it, so forget what
+            # we thought was applied: otherwise the slew limiter would ramp from
+            # a value that was never there.
+            runtime.applied_percent = 0.0
+            runtime.kick_until = 0.0
+        self.paused.discard(control_id)
 
     # ------------------------------------------------------------------
     # the loop
@@ -214,6 +239,7 @@ class ControlEngine:
             "stalled": False,
             "error": "",
             "kicking": False,
+            "paused": False,
         }
 
         if output is None:
@@ -229,6 +255,12 @@ class ControlEngine:
             return entry
 
         entry["hardware_percent"] = output.read_percent()
+
+        if control.id in self.paused:
+            entry["paused"] = True
+            entry["requested_percent"] = 0.0
+            entry["applied_percent"] = entry["hardware_percent"] or 0.0
+            return entry
 
         if not control.enabled or not self.config.settings.control_enabled:
             if output.acquired:

@@ -216,3 +216,51 @@ def test_status_listeners_are_called_each_tick(service):
     service.add_listener(received.append)
     service._notify(service.tick())
     assert received and "controls" in received[0]
+
+
+def test_calibration_is_not_fought_by_the_control_loop(service, simulator):
+    """The loop must stand down while calibration drives the fan itself.
+
+    Without that, every step calibration writes is overwritten on the next tick
+    and the fan never stops, so no stop point is ever found.
+    """
+
+    control = service.config.controls[0]
+    control.enabled = True
+    control.min_percent = 40.0  # the loop would hold the fan well above stopping
+    service.engine.set_config(service.config)
+    service.calibration_settle = 0.05
+
+    stop = threading.Event()
+
+    def run_everything():
+        while not stop.is_set():
+            simulator.step(0.5)
+            service.tick()
+            time.sleep(0.002)
+
+    worker = threading.Thread(target=run_everything, daemon=True)
+    worker.start()
+    try:
+        result = service.calibrate(control.id)
+    finally:
+        stop.set()
+        worker.join(timeout=2)
+
+    assert result["ok"] is True
+    assert result["stop_percent"] is not None
+    assert 0 < result["stop_percent"] <= 15
+
+
+def test_the_loop_takes_the_fan_back_after_calibration(service, simulator):
+    control = service.config.controls[0]
+    control.enabled = True
+    service.engine.set_config(service.config)
+    service.calibration_settle = 0.01
+
+    service.calibrate(control.id)
+    assert control.id not in service.engine.paused
+
+    status = service.tick()
+    assert status["controls"][control.id]["paused"] is False
+    assert status["controls"][control.id]["managed"] is True

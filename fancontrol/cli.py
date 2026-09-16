@@ -130,7 +130,9 @@ def cmd_status(client, args) -> int:
         percent = entry.get("applied_percent") or 0.0
         rpm = entry.get("rpm")
         note = ""
-        if entry.get("error"):
+        if entry.get("paused"):
+            note = yellow("calibrating — the curve is standing down")
+        elif entry.get("error"):
             note = red(entry["error"])
         elif entry.get("stalled"):
             note = red("stalled: reads 0 RPM while being driven")

@@ -290,7 +290,9 @@ class ControlCard(QFrame):
         palette = self.palette()
         note = ""
         colour = ""
-        if entry.get("error"):
+        if entry.get("paused"):
+            note, colour = "Calibrating — the curve is standing down.", "#f67400"
+        elif entry.get("error"):
             note, colour = entry["error"], "#da4453"
         elif entry.get("stalled"):
             note = "Reads 0 rpm while being driven — raise the minimum or the start speed."

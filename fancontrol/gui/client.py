@@ -199,7 +199,13 @@ class LocalProxy(BaseProxy):
         return self._service.get_config()
 
     def set_config(self, config: dict) -> dict:
-        return self._service.set_config(config)
+        result = self._service.set_config(config)
+        if result.get("ok"):
+            # The tick rate is part of the configuration, so follow it.
+            self._timer.setInterval(
+                int(max(0.2, self._service.config.settings.update_interval) * 1000)
+            )
+        return result
 
     def set_override(self, control_id: str, percent: float | None) -> dict:
         return self._service.set_override(control_id, percent)

@@ -224,3 +224,39 @@ def test_the_loop_actually_cools_the_simulated_machine(registry, simulator):
 
     assert end < start - 5
     assert registry.controls[output_id].read_percent() > 20
+
+
+def test_a_paused_control_is_left_alone(registry):
+    """While something else drives a fan, the loop must not write to it."""
+
+    config, output_id, sensor_id = build(registry)
+    registry.temps[sensor_id].path.write_text("55000\n")
+    engine = ControlEngine(registry, config)
+    engine.tick()
+
+    engine.pause("control")
+    registry.controls[output_id].set_percent(17.0)
+    status = engine.tick()
+
+    assert status.controls["control"]["paused"] is True
+    assert registry.controls[output_id].read_percent() == pytest.approx(17, abs=1)
+
+
+def test_resuming_does_not_ramp_from_a_stale_value(registry):
+    """After a pause the hardware is wherever the other writer left it."""
+
+    config, output_id, sensor_id = build(registry, step_down=1.0, min_percent=0)
+    registry.temps[sensor_id].path.write_text("80000\n")
+    engine = ControlEngine(registry, config)
+    engine.tick()  # settles at 100%
+
+    engine.pause("control")
+    registry.controls[output_id].set_percent(10.0)
+    engine.tick()
+    engine.resume("control")
+
+    registry.temps[sensor_id].path.write_text("30000\n")
+    status = engine.tick()
+    # The slew limiter must not believe the fan is still at 100% and crawl down
+    # from there at 1%/s; it starts from where the hardware actually is.
+    assert status.controls["control"]["applied_percent"] < 50

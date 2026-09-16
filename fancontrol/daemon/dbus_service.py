@@ -14,7 +14,10 @@ Who may call which method is decided by the bus policy in
 the configuration is restricted to the ``wheel`` group.
 """
 
-from __future__ import annotations
+# NOTE: this module must not use "from __future__ import annotations".
+# dasbus builds the D-Bus signature by reading the annotations at runtime, and
+# with postponed evaluation it would see the string "Str" instead of the type
+# and refuse to publish the interface.
 
 import json
 import logging

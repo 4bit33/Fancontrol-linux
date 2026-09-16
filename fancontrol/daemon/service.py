@@ -356,7 +356,11 @@ class FanControlService:
             if output is None or fan is None:
                 return fail("the hardware for this control is not available")
 
-        was_overridden = control_id in (self.engine.overrides if self.engine else {})
+        # The control loop has to stop writing to this output for the duration,
+        # otherwise it overwrites every step as soon as it is set.
+        if self.engine is not None:
+            self.engine.pause(control_id)
+
         samples: list[dict[str, float]] = []
         stop_percent: float | None = None
         start_percent: float | None = None
@@ -386,8 +390,8 @@ class FanControlService:
             return fail(f"calibration failed: {exc}")
         finally:
             with self._lock:
-                if self.engine is not None and not was_overridden:
-                    self.engine.set_override(control_id, None)
+                if self.engine is not None:
+                    self.engine.resume(control_id)
 
         result = {
             "control_id": control_id,
