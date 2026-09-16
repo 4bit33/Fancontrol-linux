@@ -1,0 +1,875 @@
+{
+  "__VERSION__": "270",
+  "FanControl": {
+    "Controls": [
+      {
+        "NickName": "Fan #1",
+        "Identifier": "/lpc/it8689e/control/0",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "Графік"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "/lpc/it8689e/fan/0"
+        },
+        "SelectedStart": 35,
+        "SelectedStop": 26,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            20,
+            0,
+            false
+          ],
+          [
+            30,
+            1294,
+            false
+          ],
+          [
+            40,
+            1705,
+            false
+          ],
+          [
+            50,
+            2079,
+            false
+          ],
+          [
+            60,
+            2450,
+            false
+          ],
+          [
+            70,
+            2781,
+            false
+          ],
+          [
+            80,
+            3010,
+            false
+          ],
+          [
+            100,
+            3013,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Fan #2",
+        "Identifier": "/lpc/it8689e/control/1",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "Графік"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "/lpc/it8689e/fan/1"
+        },
+        "SelectedStart": 13,
+        "SelectedStop": 7,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            1,
+            0,
+            false
+          ],
+          [
+            10,
+            607,
+            false
+          ],
+          [
+            20,
+            885,
+            false
+          ],
+          [
+            30,
+            1147,
+            false
+          ],
+          [
+            40,
+            1416,
+            false
+          ],
+          [
+            50,
+            1674,
+            false
+          ],
+          [
+            60,
+            1944,
+            false
+          ],
+          [
+            70,
+            2204,
+            false
+          ],
+          [
+            80,
+            2475,
+            false
+          ],
+          [
+            90,
+            2741,
+            false
+          ],
+          [
+            100,
+            3013,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Fan #3",
+        "Identifier": "/lpc/it8689e/control/2",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "Графік"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "/lpc/it8689e/fan/2"
+        },
+        "SelectedStart": 0,
+        "SelectedStop": 0,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            0,
+            322,
+            false
+          ],
+          [
+            1,
+            325,
+            false
+          ],
+          [
+            10,
+            331,
+            false
+          ],
+          [
+            20,
+            461,
+            false
+          ],
+          [
+            30,
+            664,
+            false
+          ],
+          [
+            40,
+            867,
+            false
+          ],
+          [
+            50,
+            1049,
+            false
+          ],
+          [
+            60,
+            1230,
+            false
+          ],
+          [
+            70,
+            1395,
+            false
+          ],
+          [
+            80,
+            1560,
+            false
+          ],
+          [
+            90,
+            1708,
+            false
+          ],
+          [
+            100,
+            1957,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Fan #4",
+        "Identifier": "/lpc/it8689e/control/3",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "Графік"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "/lpc/it8689e/fan/3"
+        },
+        "SelectedStart": 13,
+        "SelectedStop": 7,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            1,
+            0,
+            false
+          ],
+          [
+            10,
+            611,
+            false
+          ],
+          [
+            20,
+            889,
+            false
+          ],
+          [
+            30,
+            1145,
+            false
+          ],
+          [
+            40,
+            1415,
+            false
+          ],
+          [
+            50,
+            1671,
+            false
+          ],
+          [
+            60,
+            1942,
+            false
+          ],
+          [
+            70,
+            2202,
+            false
+          ],
+          [
+            80,
+            2473,
+            false
+          ],
+          [
+            90,
+            2738,
+            false
+          ],
+          [
+            100,
+            3013,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Fan #5",
+        "Identifier": "/lpc/it8689e/control/4",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "Графік"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "/lpc/it8689e/fan/5"
+        },
+        "SelectedStart": 0,
+        "SelectedStop": 0,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            0,
+            422,
+            false
+          ],
+          [
+            1,
+            422,
+            false
+          ],
+          [
+            10,
+            422,
+            false
+          ],
+          [
+            20,
+            422,
+            false
+          ],
+          [
+            30,
+            422,
+            false
+          ],
+          [
+            40,
+            422,
+            false
+          ],
+          [
+            50,
+            422,
+            false
+          ],
+          [
+            60,
+            422,
+            false
+          ],
+          [
+            70,
+            422,
+            false
+          ],
+          [
+            90,
+            422,
+            false
+          ],
+          [
+            100,
+            422,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Fan #6",
+        "Identifier": "/lpc/it8689e/control/5",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "Графік"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "/lpc/it8689e/fan/5"
+        },
+        "SelectedStart": 13,
+        "SelectedStop": 7,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            1,
+            0,
+            false
+          ],
+          [
+            10,
+            610,
+            false
+          ],
+          [
+            20,
+            885,
+            false
+          ],
+          [
+            30,
+            1142,
+            false
+          ],
+          [
+            40,
+            1411,
+            false
+          ],
+          [
+            50,
+            1671,
+            false
+          ],
+          [
+            60,
+            1940,
+            false
+          ],
+          [
+            70,
+            2201,
+            false
+          ],
+          [
+            80,
+            2466,
+            false
+          ],
+          [
+            90,
+            2730,
+            false
+          ],
+          [
+            100,
+            3000,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Control 1 - NVIDIA GeForce RTX 3070",
+        "Identifier": "NVApiWrapper/0-GA104-A/control/0",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "відюха"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "NVApiWrapper/0-GA104-A/fan/0"
+        },
+        "SelectedStart": 9,
+        "SelectedStop": 6,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            0,
+            0,
+            false
+          ],
+          [
+            1,
+            999,
+            false
+          ],
+          [
+            10,
+            999,
+            false
+          ],
+          [
+            20,
+            999,
+            false
+          ],
+          [
+            30,
+            999,
+            false
+          ],
+          [
+            40,
+            1238,
+            false
+          ],
+          [
+            50,
+            1489,
+            false
+          ],
+          [
+            60,
+            1737,
+            false
+          ],
+          [
+            70,
+            1984,
+            false
+          ],
+          [
+            80,
+            2241,
+            false
+          ],
+          [
+            90,
+            2471,
+            false
+          ],
+          [
+            100,
+            2651,
+            false
+          ]
+        ]
+      },
+      {
+        "NickName": "Control 2 - NVIDIA GeForce RTX 3070",
+        "Identifier": "NVApiWrapper/0-GA104-A/control/1",
+        "IsHidden": false,
+        "Enable": true,
+        "SelectedFanCurve": {
+          "Name": "відюха"
+        },
+        "SelectedOffset": 0,
+        "PairedFanSensor": {
+          "Identifier": "NVApiWrapper/0-GA104-A/fan/1"
+        },
+        "SelectedStart": 9,
+        "SelectedStop": 6,
+        "MinimumPercent": 0,
+        "SelectedCommandStepUp": 8,
+        "SelectedCommandStepDown": 8,
+        "ManualControlValue": 50,
+        "ManualControl": false,
+        "ForceApply": false,
+        "Calibration": [
+          [
+            0,
+            0,
+            false
+          ],
+          [
+            1,
+            997,
+            false
+          ],
+          [
+            10,
+            997,
+            false
+          ],
+          [
+            20,
+            997,
+            false
+          ],
+          [
+            30,
+            997,
+            false
+          ],
+          [
+            40,
+            1242,
+            false
+          ],
+          [
+            50,
+            1484,
+            false
+          ],
+          [
+            60,
+            1740,
+            false
+          ],
+          [
+            70,
+            1987,
+            false
+          ],
+          [
+            80,
+            2244,
+            false
+          ],
+          [
+            90,
+            2483,
+            false
+          ],
+          [
+            100,
+            2682,
+            false
+          ]
+        ]
+      }
+    ],
+    "CustomSensors": [],
+    "FanCurves": [
+      {
+        "Name": "Графік",
+        "IsHidden": false,
+        "CommandMode": 0,
+        "SelectedTempSource": {
+          "Identifier": "/intelcpu/0/temperature/0"
+        },
+        "Points": [
+          "20.44826019013703,20.950755555555546",
+          "23.698146568630502,23.937422222222217",
+          "28.516943612603583,26.07075555555555",
+          "35.016716369590526,28.630755555555552",
+          "38.9,32.47075555555555",
+          "42.63713960192005,37.37742222222222",
+          "48.576587121235704,40.790755555555556",
+          "56.533205496168,46.764088888888885",
+          "64.6,52.09742222222222",
+          "73.67915776890942,55.724088888888886"
+        ],
+        "MaximumTemperature": 80,
+        "MinimumTemperature": 20,
+        "MaximumCommand": 80,
+        "HysteresisConfig": {
+          "ResponseTimeUp": 1,
+          "ResponseTimeDown": 1,
+          "HysteresisValueUp": 2,
+          "HysteresisValueDown": 2,
+          "IgnoreHysteresisAtLimits": false
+        }
+      },
+      {
+        "Name": "CPU",
+        "IsHidden": false,
+        "CommandMode": 0,
+        "SelectedTempSource": {
+          "Identifier": "/intelcpu/0/temperature/1"
+        },
+        "Points": [
+          "20,50.18844444444444",
+          "30.8,61.38844444444444",
+          "37.93974635944242,69.38844444444445",
+          "45.08389313975134,77.6551111111111",
+          "51.27548701601907,83.2551111111111",
+          "59.68970433504959,88.32177777777777",
+          "68.3,93.12177777777777",
+          "80.2,100"
+        ],
+        "MaximumTemperature": 105,
+        "MinimumTemperature": 20,
+        "MaximumCommand": 100,
+        "HysteresisConfig": {
+          "ResponseTimeUp": 1,
+          "ResponseTimeDown": 1,
+          "HysteresisValueUp": 2,
+          "HysteresisValueDown": 2,
+          "IgnoreHysteresisAtLimits": false
+        }
+      },
+      {
+        "Name": "Функція",
+        "IsHidden": false,
+        "CommandMode": 0,
+        "SelectedFanCurves": [
+          {
+            "Name": "Графік"
+          },
+          {
+            "Name": "CPU"
+          }
+        ],
+        "SelectedMixFunction": 2
+      },
+      {
+        "Name": "літо",
+        "IsHidden": false,
+        "CommandMode": 0,
+        "SelectedTempSource": {
+          "Identifier": "/intelcpu/0/temperature/0"
+        },
+        "Points": [
+          "20,36.321777777777775",
+          "24.594666948904564,44.32177777777777",
+          "27.8,54.721777777777774",
+          "33.111610561508144,56.85511111111111",
+          "37.59421246287846,56.32177777777777",
+          "42.525074554385796,59.78844444444444",
+          "46.78354636068758,63.255111111111106",
+          "52.38679873740046,63.788444444444444",
+          "58.77450644685315,65.38844444444445",
+          "66.95525491685396,68.58844444444443",
+          "74.799808244252,74.45511111111111"
+        ],
+        "MaximumTemperature": 80,
+        "MinimumTemperature": 20,
+        "MaximumCommand": 100,
+        "HysteresisConfig": {
+          "ResponseTimeUp": 1,
+          "ResponseTimeDown": 1,
+          "HysteresisValueUp": 2,
+          "HysteresisValueDown": 2,
+          "IgnoreHysteresisAtLimits": true
+        }
+      },
+      {
+        "Name": "відюха",
+        "IsHidden": false,
+        "CommandMode": 0,
+        "SelectedTempSource": {
+          "Identifier": "NVApiWrapper/0-GA104-A/sensor/0"
+        },
+        "Points": [
+          "23.175176346803966,49.92177777777778",
+          "26.7,50.18844444444444",
+          "30.83295459497824,54.721777777777774",
+          "37.743632526257464,60.321777777777775",
+          "42.78655966529906,62.18844444444444",
+          "48.95013727968323,64.85511111111111",
+          "57.72856600320008,67.78844444444444",
+          "66.1334445682694,73.6551111111111",
+          "74.4,78.98844444444444",
+          "82.56965153996055,84.85511111111111",
+          "93.48938121416253,92.58844444444443",
+          "100.31328406621799,95.2551111111111",
+          "107.22396199749723,98.18844444444444",
+          "116.18916580023783,100"
+        ],
+        "MaximumTemperature": 120,
+        "MinimumTemperature": 20,
+        "MaximumCommand": 100,
+        "HysteresisConfig": {
+          "ResponseTimeUp": 1,
+          "ResponseTimeDown": 1,
+          "HysteresisValueUp": 2,
+          "HysteresisValueDown": 2,
+          "IgnoreHysteresisAtLimits": true
+        }
+      },
+      {
+        "Name": "відюха нагрузка",
+        "IsHidden": false,
+        "CommandMode": 0,
+        "SelectedTempSource": {
+          "Identifier": "NVApiWrapper/0-GA104-A/sensor/0"
+        },
+        "Points": [
+          "29.7,68.58844444444443",
+          "57.54179092397632,81.92177777777778",
+          "97.69843295708532,86.98844444444444"
+        ],
+        "MaximumTemperature": 120,
+        "MinimumTemperature": 20,
+        "MaximumCommand": 100,
+        "HysteresisConfig": {
+          "ResponseTimeUp": 1,
+          "ResponseTimeDown": 1,
+          "HysteresisValueUp": 2,
+          "HysteresisValueDown": 2,
+          "IgnoreHysteresisAtLimits": true
+        }
+      }
+    ],
+    "FanSensors": [
+      {
+        "Identifier": "/lpc/it8689e/fan/0",
+        "IsHidden": false,
+        "NickName": "Fan #1"
+      },
+      {
+        "Identifier": "/lpc/it8689e/fan/1",
+        "IsHidden": false,
+        "NickName": "Fan #2"
+      },
+      {
+        "Identifier": "/lpc/it8689e/fan/2",
+        "IsHidden": false,
+        "NickName": "Fan #3"
+      },
+      {
+        "Identifier": "/lpc/it8689e/fan/3",
+        "IsHidden": false,
+        "NickName": "Fan #4"
+      },
+      {
+        "Identifier": "/lpc/it8689e/fan/4",
+        "IsHidden": false,
+        "NickName": "Fan #5"
+      },
+      {
+        "Identifier": "/lpc/it8689e/fan/5",
+        "IsHidden": false,
+        "NickName": "Fan #6"
+      },
+      {
+        "Identifier": "NVApiWrapper/0-GA104-A/fan/0",
+        "IsHidden": false,
+        "NickName": "Fan 1 - NVIDIA GeForce RTX 3070"
+      },
+      {
+        "Identifier": "NVApiWrapper/0-GA104-A/fan/1",
+        "IsHidden": false,
+        "NickName": "Fan 2 - NVIDIA GeForce RTX 3070"
+      }
+    ],
+    "TemperatureSensors": []
+  },
+  "Sensors": {
+    "AdlxWrapperSettings": {
+      "Enabled": true
+    },
+    "DisabledPlugins": [],
+    "DisableStorageSensors": true,
+    "LibreHardwareMonitorSettings": {
+      "Controller": false,
+      "CPU": true,
+      "EmbeddedEC": true,
+      "GPU": true,
+      "Memory": false,
+      "Motherboard": true,
+      "PowerMonitor": false,
+      "PSU": false,
+      "Storage": false,
+      "StorageUpdateInterval": "00:01:00",
+      "ZeroRPMOverride": true
+    },
+    "NvAPIWrapperSettings": {
+      "Enabled": true,
+      "ZeroRPMOverride": true
+    }
+  },
+  "MainWindow": {
+    "Fahrenheit": false,
+    "HideCalibration": false,
+    "HideFanSpeedCards": true,
+    "HorizontalUIOrientation": false,
+    "PrimaryColor": "#FF607D8B",
+    "SecondaryColor": "#FFAEEA00",
+    "SelectedTheme": "",
+    "ShowHiddenCards": false,
+    "SyncThemeWithWindows": true,
+    "SyncTrayIconColorWithWindows": true,
+    "TrayIconColor": null,
+    "TrayIcons": []
+  }
+}

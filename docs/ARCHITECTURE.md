@@ -27,7 +27,7 @@ window.
 | `hw/nvidia.py`, `hw/nvml.py` | NVIDIA, through a ctypes binding to NVML |
 | `hw/registry.py` | Aggregates the backends into one lookup table |
 | `hw/simulator.py` | A fake hwmon tree that responds to PWM writes |
-| `importer/fancontrol_json.py` | Reading FanControl's `userConfig.json` |
+| `importer/fancontrol_json.py` | Reading FanControl's `userConfig.json`, whichever of its schemas it uses |
 | `importer/mapping.py` | Pointing Windows identifiers at Linux hardware |
 | `daemon/service.py` | The daemon's logic, with no transport attached |
 | `daemon/dbus_service.py` | The same methods, published on D-Bus |
@@ -118,6 +118,26 @@ stable instead of forcing a new D-Bus type every time.
 Access is decided by the bus policy in
 `data/dbus/org.fancontrol.Daemon.conf`: the four `Get*` methods are open to
 every local user, and everything else is restricted to the `wheel` group.
+
+## Importing a Windows configuration
+
+FanControl's file format has changed across releases, so the importer does not
+parse against a schema. It walks the whole document and recognises objects by
+what they carry: something with `Points` and a temperature source is a graph
+curve wherever it sits.
+
+Telling a control from a sensor reference is the part that needs care. A
+`PairedFanSensor` reference, an entry in `FanSensors` and a real control all
+carry an identifier, and treating every identifier as a fan produced three
+phantom controls per real one. A control is therefore recognised by `/control/`
+in its identifier, or by a field only a control has (`SelectedStart`,
+`ManualControl`, `Calibration`, and the rest of `CONTROL_MARKERS`).
+
+Mapping the identifiers onto Linux hardware is scored rather than decided.
+Something is applied automatically only when it is both confident and clearly
+ahead of the runner-up, and two identifiers are never pointed at the same Linux
+sensor: they were separate things on Windows, so at most one of them can be
+right. Everything else goes to the user with a ranked list.
 
 ## Testing
 

@@ -304,8 +304,8 @@ def cmd_import(client, args) -> int:
             print(red(f"  {problem}"))
         return 1
     print(green("\nconfiguration applied and saved"))
-    if outcome.get("skipped"):
-        print(yellow("  left disabled (no hardware to drive): " + ", ".join(outcome["skipped"])))
+    for entry in outcome.get("skipped") or []:
+        print(yellow(f"  left switched off: {entry['name']} — {entry['reason']}"))
     return 0
 
 

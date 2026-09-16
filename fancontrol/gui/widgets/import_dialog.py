@@ -107,10 +107,14 @@ class ImportDialog(QDialog):
 
     def _kind_of(self, win_id: str) -> str:
         identifier = win_id.removeprefix(WIN_PREFIX).lower()
-        return "control" if "/control" in identifier else "temperature"
+        if "/control" in identifier:
+            return "control"
+        if "/fan" in identifier:
+            return "fan"
+        return "temperature"
 
     def _targets_for(self, kind: str) -> list[tuple[str, str]]:
-        section = "controls" if kind == "control" else "temperatures"
+        section = {"control": "controls", "fan": "fans"}.get(kind, "temperatures")
         return [
             (entry["id"], f"{entry['name']}  ({entry['device']['chip']})")
             for entry in self._inventory.get(section, [])

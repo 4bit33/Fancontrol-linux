@@ -25,6 +25,8 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from ...core.models import CurvePoint
 
+#: Default temperature range. Individual curves override it: a GPU curve is
+#: commonly drawn up to 120 C, and its points have to stay reachable.
 MIN_TEMP = 0.0
 MAX_TEMP = 100.0
 #: Click tolerance, in pixels, for grabbing a point.
@@ -49,6 +51,8 @@ class CurveGraph(QWidget):
         self._current_temp: float | None = None
         self._current_percent: float | None = None
         self._accent = QColor("#3daee9")
+        self._min_temp = MIN_TEMP
+        self._max_temp = MAX_TEMP
 
         self.setMinimumSize(340, 220)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -65,6 +69,18 @@ class CurveGraph(QWidget):
 
     def points(self) -> list[CurvePoint]:
         return [CurvePoint(p.temperature, p.percent) for p in self._points]
+
+    def set_temperature_range(self, low: float, high: float) -> None:
+        """Set the horizontal range. Points outside it would be unreachable."""
+
+        if high - low < 10:
+            high = low + 10
+        self._min_temp = float(low)
+        self._max_temp = float(high)
+        self.update()
+
+    def temperature_range(self) -> tuple[float, float]:
+        return self._min_temp, self._max_temp
 
     def set_editable(self, editable: bool) -> None:
         self._editable = editable
@@ -95,16 +111,18 @@ class CurveGraph(QWidget):
 
     def _to_pixel(self, temperature: float, percent: float) -> QPointF:
         rect = self._plot_rect()
-        x = rect.left() + (temperature - MIN_TEMP) / (MAX_TEMP - MIN_TEMP) * rect.width()
+        span = self._max_temp - self._min_temp
+        x = rect.left() + (temperature - self._min_temp) / span * rect.width()
         y = rect.bottom() - percent / 100.0 * rect.height()
         return QPointF(x, y)
 
     def _to_value(self, pos: QPointF) -> tuple[float, float]:
         rect = self._plot_rect()
-        temperature = MIN_TEMP + (pos.x() - rect.left()) / rect.width() * (MAX_TEMP - MIN_TEMP)
+        span = self._max_temp - self._min_temp
+        temperature = self._min_temp + (pos.x() - rect.left()) / rect.width() * span
         percent = (rect.bottom() - pos.y()) / rect.height() * 100.0
         return (
-            max(MIN_TEMP, min(MAX_TEMP, round(temperature))),
+            max(self._min_temp, min(self._max_temp, round(temperature))),
             max(0.0, min(100.0, round(percent))),
         )
 
@@ -152,11 +170,15 @@ class CurveGraph(QWidget):
         font.setPointSizeF(max(7.0, font.pointSizeF() - 1.5))
         painter.setFont(font)
 
-        for temperature in range(int(MIN_TEMP), int(MAX_TEMP) + 1, 10):
+        step = self._tick_step()
+        first = int(self._min_temp // step) * int(step)
+        for temperature in range(first, int(self._max_temp) + 1, int(step)):
+            if temperature < self._min_temp:
+                continue
             x = self._to_pixel(temperature, 0).x()
             painter.setPen(QPen(grid, 1))
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
-            if temperature % 20 == 0:
+            if temperature % (step * 2) == 0:
                 painter.setPen(QPen(faint))
                 painter.drawText(
                     QRectF(x - 18, rect.bottom() + 4, 36, MARGIN_BOTTOM - 6),
@@ -175,14 +197,23 @@ class CurveGraph(QWidget):
                 f"{percent}%",
             )
 
+    def _tick_step(self) -> int:
+        """A grid spacing that gives roughly ten lines across the range."""
+
+        span = self._max_temp - self._min_temp
+        for step in (5, 10, 20, 25, 50):
+            if span / step <= 12:
+                return step
+        return 50
+
     def _curve_path(self) -> QPainterPath:
         path = QPainterPath()
         first = self._points[0]
-        path.moveTo(self._to_pixel(MIN_TEMP, first.percent))
+        path.moveTo(self._to_pixel(self._min_temp, first.percent))
         for point in self._points:
             path.lineTo(self._to_pixel(point.temperature, point.percent))
         last = self._points[-1]
-        path.lineTo(self._to_pixel(MAX_TEMP, last.percent))
+        path.lineTo(self._to_pixel(self._max_temp, last.percent))
         return path
 
     def _paint_curve(self, painter: QPainter, rect: QRectF) -> None:
@@ -300,11 +331,15 @@ class CurveGraph(QWidget):
         temperature, percent = self._to_value(position)
         # Keep the points in temperature order, so dragging one past its
         # neighbour pushes against it instead of scrambling the curve.
-        lower = self._points[self._dragging - 1].temperature + 1 if self._dragging > 0 else MIN_TEMP
+        lower = (
+            self._points[self._dragging - 1].temperature + 1
+            if self._dragging > 0
+            else self._min_temp
+        )
         upper = (
             self._points[self._dragging + 1].temperature - 1
             if self._dragging < len(self._points) - 1
-            else MAX_TEMP
+            else self._max_temp
         )
         self._points[self._dragging] = CurvePoint(
             max(lower, min(upper, temperature)), percent

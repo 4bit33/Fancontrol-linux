@@ -76,6 +76,27 @@ CURVE_DESCRIPTIONS = {
 }
 
 
+def curve_range(curve: BaseCurve) -> tuple[float, float]:
+    """The temperature range this curve should be drawn over."""
+
+    if isinstance(curve, GraphCurve):
+        low, high = curve.axis_min_temperature, curve.axis_max_temperature
+        if curve.points:
+            low = min(low, curve.points[0].temperature)
+            high = max(high, curve.points[-1].temperature)
+        return low, high
+    if isinstance(curve, LinearCurve):
+        return min(MIN_TEMP, curve.min_temperature), max(MAX_TEMP, curve.max_temperature)
+    if isinstance(curve, TriggerCurve):
+        return (
+            min(MIN_TEMP, curve.idle_temperature),
+            max(MAX_TEMP, curve.load_temperature),
+        )
+    if isinstance(curve, TargetCurve):
+        return MIN_TEMP, max(MAX_TEMP, curve.target_temperature)
+    return MIN_TEMP, MAX_TEMP
+
+
 def sample_curve(curve: BaseCurve) -> list[tuple[float, float]] | None:
     """Points describing the curve's shape, for the preview.
 
@@ -83,25 +104,26 @@ def sample_curve(curve: BaseCurve) -> list[tuple[float, float]] | None:
     temperature, because drawing them as a line would be a lie.
     """
 
+    low, high = curve_range(curve)
     if isinstance(curve, GraphCurve):
         return [(p.temperature, p.percent) for p in curve.points]
     if isinstance(curve, FlatCurve):
-        return [(MIN_TEMP, curve.percent), (MAX_TEMP, curve.percent)]
+        return [(low, curve.percent), (high, curve.percent)]
     if isinstance(curve, LinearCurve):
         return [
-            (MIN_TEMP, curve.min_percent),
+            (low, curve.min_percent),
             (curve.min_temperature, curve.min_percent),
             (curve.max_temperature, curve.max_percent),
-            (MAX_TEMP, curve.max_percent),
+            (high, curve.max_percent),
         ]
     if isinstance(curve, TriggerCurve):
         # Drawn as the rising edge; the falling edge sits at the idle
         # temperature and is what the gap between the two thresholds buys.
         return [
-            (MIN_TEMP, curve.idle_percent),
+            (low, curve.idle_percent),
             (curve.load_temperature, curve.idle_percent),
             (curve.load_temperature, curve.load_percent),
-            (MAX_TEMP, curve.load_percent),
+            (high, curve.load_percent),
         ]
     return None
 
@@ -148,23 +170,33 @@ class NewCurveDialog(QDialog):
         return CurveType.GRAPH.value
 
 
+#: Quiet, unfussy defaults: react to a rise straight away, come back down
+#: gently, and ignore the small wobble of a sensor reading.
+_DEFAULT_SMOOTHING = {
+    "hysteresis_up": 0.0,
+    "hysteresis_down": 2.0,
+    "response_time_up": 1.0,
+    "response_time_down": 4.0,
+}
+
+
 def make_curve(curve_type: str, name: str) -> BaseCurve:
     """A new curve of ``curve_type`` with sensible starting values."""
 
     curve_id = new_id("curve")
     if curve_type == CurveType.GRAPH.value:
         return GraphCurve(
-            id=curve_id, name=name, hysteresis=2.0, response_time=3.0,
+            id=curve_id, name=name, **_DEFAULT_SMOOTHING,
             points=[CurvePoint(30, 20), CurvePoint(50, 30), CurvePoint(70, 65), CurvePoint(85, 100)],
         )
     if curve_type == CurveType.FLAT.value:
         return FlatCurve(id=curve_id, name=name, percent=50)
     if curve_type == CurveType.LINEAR.value:
-        return LinearCurve(id=curve_id, name=name, hysteresis=2.0, response_time=3.0)
+        return LinearCurve(id=curve_id, name=name, **_DEFAULT_SMOOTHING)
     if curve_type == CurveType.TARGET.value:
-        return TargetCurve(id=curve_id, name=name, response_time=3.0)
+        return TargetCurve(id=curve_id, name=name, **_DEFAULT_SMOOTHING)
     if curve_type == CurveType.TRIGGER.value:
-        return TriggerCurve(id=curve_id, name=name, response_time=3.0)
+        return TriggerCurve(id=curve_id, name=name, **_DEFAULT_SMOOTHING)
     if curve_type == CurveType.MIX.value:
         return MixCurve(id=curve_id, name=name)
     if curve_type == CurveType.SYNC.value:
@@ -244,28 +276,44 @@ class CurveEditorDialog(QDialog):
         return combo
 
     def _add_smoothing_rows(self) -> None:
-        self.hysteresis = _spin(0, 20, self.curve.hysteresis, " °C", decimals=1)
-        self.hysteresis.setToolTip(
-            "Ignore temperature changes smaller than this, so the fan does not\n"
-            "constantly adjust to noise in the reading."
+        """Hysteresis and smoothing, separately for rising and falling."""
+
+        self.hysteresis_up = _spin(0, 20, self.curve.hysteresis_up, " °C", decimals=1)
+        self.hysteresis_up.setToolTip(
+            "How far the temperature must rise before the fan speeds up.\n"
+            "Leave at 0 to react to a rise immediately."
         )
-        self.hysteresis.valueChanged.connect(self._on_field_changed)
-
-        self.drop_only = QCheckBox("Only when the temperature falls")
-        self.drop_only.setChecked(self.curve.hysteresis_on_drop_only)
-        self.drop_only.setToolTip("Keeps the fans reacting instantly to a rise in temperature.")
-        self.drop_only.toggled.connect(self._on_field_changed)
-
-        self.response = _spin(0, 60, self.curve.response_time, " s", decimals=1)
-        self.response.setToolTip(
-            "Smooths the temperature over this many seconds before the curve\n"
-            "uses it. Higher means slower, quieter changes."
+        self.hysteresis_down = _spin(0, 20, self.curve.hysteresis_down, " °C", decimals=1)
+        self.hysteresis_down.setToolTip(
+            "How far it must fall before the fan slows down. Raise this if the\n"
+            "fan keeps hunting up and down around one temperature."
         )
-        self.response.valueChanged.connect(self._on_field_changed)
+        self.response_up = _spin(0, 60, self.curve.response_time_up, " s", decimals=1)
+        self.response_up.setToolTip(
+            "Smooths a rising temperature over this many seconds. 0 is off."
+        )
+        self.response_down = _spin(0, 60, self.curve.response_time_down, " s", decimals=1)
+        self.response_down.setToolTip(
+            "Smooths a falling temperature. Making this larger than the rising\n"
+            "one is what keeps the fans from dropping the moment a load ends."
+        )
+        self.ignore_at_limits = QCheckBox("Ignore hysteresis past the ends of the curve")
+        self.ignore_at_limits.setChecked(self.curve.ignore_hysteresis_at_limits)
+        self.ignore_at_limits.setToolTip(
+            "Out past the first and last point the speed is flat anyway, so\n"
+            "holding the reading back there only delays the fans."
+        )
 
-        self.form.addRow("Hysteresis", self.hysteresis)
-        self.form.addRow("", self.drop_only)
-        self.form.addRow("Response time", self.response)
+        for widget in (self.hysteresis_up, self.hysteresis_down,
+                       self.response_up, self.response_down):
+            widget.valueChanged.connect(self._on_field_changed)
+        self.ignore_at_limits.toggled.connect(self._on_field_changed)
+
+        self.form.addRow("Hysteresis rising", self.hysteresis_up)
+        self.form.addRow("Hysteresis falling", self.hysteresis_down)
+        self.form.addRow("Response rising", self.response_up)
+        self.form.addRow("Response falling", self.response_down)
+        self.form.addRow("", self.ignore_at_limits)
 
     def _build_form(self) -> None:
         curve = self.curve
@@ -281,6 +329,16 @@ class CurveEditorDialog(QDialog):
                 "Drag a point to move it, double-click the graph to add one, "
                 "right-click a point to remove it."
             )
+            self.axis_min = _spin(0, 200, curve.axis_min_temperature, " °C")
+            self.axis_max = _spin(10, 200, curve.axis_max_temperature, " °C")
+            for widget in (self.axis_min, self.axis_max):
+                widget.setToolTip(
+                    "The temperature range the graph covers. A GPU curve usually\n"
+                    "needs more than a CPU one. It only affects the drawing."
+                )
+                widget.valueChanged.connect(self._on_field_changed)
+            self.form.addRow("Graph starts at", self.axis_min)
+            self.form.addRow("Graph ends at", self.axis_max)
             self._add_smoothing_rows()
 
         elif isinstance(curve, FlatCurve):
@@ -409,13 +467,20 @@ class CurveEditorDialog(QDialog):
         curve = self.curve
         if hasattr(self, "sensor"):
             curve.sensor_id = self.sensor.currentData() or ""
-        if hasattr(self, "hysteresis"):
-            curve.hysteresis = self.hysteresis.value()
-            curve.hysteresis_on_drop_only = self.drop_only.isChecked()
-            curve.response_time = self.response.value()
+        if hasattr(self, "hysteresis_up"):
+            curve.hysteresis_up = self.hysteresis_up.value()
+            curve.hysteresis_down = self.hysteresis_down.value()
+            curve.response_time_up = self.response_up.value()
+            curve.response_time_down = self.response_down.value()
+            curve.ignore_hysteresis_at_limits = self.ignore_at_limits.isChecked()
 
         if isinstance(curve, GraphCurve):
             curve.points = self.graph.points()
+            if hasattr(self, "axis_min"):
+                low, high = self.axis_min.value(), self.axis_max.value()
+                if high > low:
+                    curve.axis_min_temperature = low
+                    curve.axis_max_temperature = high
         elif isinstance(curve, FlatCurve):
             curve.percent = self.percent.value()
         elif isinstance(curve, LinearCurve):
@@ -468,6 +533,7 @@ class CurveEditorDialog(QDialog):
             return
 
         self.graph.setVisible(True)
+        self.graph.set_temperature_range(*curve_range(self.curve))
         self.graph.set_points([CurvePoint(t, p) for t, p in samples])
 
         sensor_id = getattr(self.curve, "sensor_id", "")

@@ -71,19 +71,28 @@ class CurvePoint:
 
 @dataclass
 class BaseCurve:
-    """Fields shared by every curve type."""
+    """Fields shared by every curve type.
+
+    Smoothing and hysteresis are separate for rising and falling temperatures,
+    the way FanControl stores them: most people want the fans to answer a rise
+    quickly and to come back down slowly.
+    """
 
     id: str
     name: str
     type: str = ""
-    #: Temperature smoothing, in seconds. 0 disables it.
-    response_time: float = 0.0
-    #: Temperature hysteresis in degrees; the curve only reacts once the
-    #: temperature moved further than this from the last value it acted on.
-    hysteresis: float = 0.0
-    #: When true the hysteresis is only applied while the temperature falls,
-    #: so the fans still ramp up immediately. Matches FanControl's option.
-    hysteresis_on_drop_only: bool = True
+    #: Temperature smoothing in seconds while the temperature rises. 0 is off.
+    response_time_up: float = 0.0
+    #: Temperature smoothing in seconds while it falls.
+    response_time_down: float = 0.0
+    #: Degrees the temperature must rise before the curve reacts to the rise.
+    hysteresis_up: float = 0.0
+    #: Degrees it must fall before the curve reacts to the fall.
+    hysteresis_down: float = 0.0
+    #: Skip the hysteresis once the temperature is past either end of the
+    #: curve, where the output is flat anyway and holding it back only delays
+    #: the fans for no benefit.
+    ignore_hysteresis_at_limits: bool = False
 
     def sensor_ids(self) -> list[str]:
         """Temperature sensors this curve reads directly."""
@@ -110,6 +119,11 @@ class GraphCurve(BaseCurve):
     type: str = CurveType.GRAPH.value
     sensor_id: str = ""
     points: list[CurvePoint] = field(default_factory=list)
+    #: The temperature range the editor shows. It does not change what the
+    #: curve does - points outside it would simply be impossible to reach with
+    #: the mouse - but a GPU curve needs a different range from a CPU one.
+    axis_min_temperature: float = 0.0
+    axis_max_temperature: float = 100.0
 
     def sensor_ids(self) -> list[str]:
         return [self.sensor_id] if self.sensor_id else []
@@ -219,11 +233,29 @@ CURVE_CLASSES: dict[str, type[BaseCurve]] = {
 }
 
 
+def _upgrade_curve_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    """Accept configurations written before hysteresis was split up and down."""
+
+    data = dict(raw)
+    if "response_time" in data:
+        value = data.pop("response_time")
+        data.setdefault("response_time_up", value)
+        data.setdefault("response_time_down", value)
+    if "hysteresis" in data:
+        value = data.pop("hysteresis")
+        drop_only = data.pop("hysteresis_on_drop_only", True)
+        data.setdefault("hysteresis_down", value)
+        data.setdefault("hysteresis_up", 0.0 if drop_only else value)
+    data.pop("hysteresis_on_drop_only", None)
+    return data
+
+
 def curve_from_dict(raw: dict[str, Any]) -> BaseCurve:
     ctype = raw.get("type", CurveType.GRAPH.value)
     cls = CURVE_CLASSES.get(ctype)
     if cls is None:
         raise ValueError(f"unknown curve type: {ctype!r}")
+    raw = _upgrade_curve_fields(raw)
     kwargs = {k: v for k, v in raw.items() if k != "points"}
     # Drop keys the dataclass does not know about so that configs written by a
     # newer version still load instead of blowing up.
@@ -255,8 +287,12 @@ class Control:
     min_percent: float = 0.0
     max_percent: float = 100.0
     offset_percent: float = 0.0
-    #: Allow the fan to stop completely below ``min_percent``.
+    #: Allow the fan to stop completely.
     allow_stop: bool = False
+    #: Below this percentage the fan is switched off rather than run slowly,
+    #: which is what FanControl calls the stop point. 0 means use
+    #: ``min_percent`` as the threshold.
+    stop_percent: float = 0.0
     #: When a stopped fan restarts, kick it at this percentage for
     #: ``start_duration`` seconds so it actually spins up.
     start_percent: float = 40.0
@@ -268,6 +304,9 @@ class Control:
     #: stall detection.
     fan_sensor_id: str = ""
     hidden: bool = False
+    #: Measured (percent, rpm) pairs, either from this program's calibration or
+    #: imported from FanControl's. Shown in the UI; nothing depends on it.
+    calibration: list[list[float]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -390,6 +429,8 @@ def validate(config: Config) -> list[str]:
             )
         if control.min_percent > control.max_percent:
             problems.append(f"control {control.name!r}: min percent above max percent")
+        if control.stop_percent > control.max_percent:
+            problems.append(f"control {control.name!r}: stop percent above max percent")
 
     problems.extend(_find_cycles(config))
     return problems

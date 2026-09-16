@@ -79,39 +79,61 @@ def interpolate(points: list[tuple[float, float]], temperature: float) -> float:
 
 
 def _smooth(curve: BaseCurve, state: CurveState, raw: float, dt: float) -> float:
-    """First-order low-pass over ``response_time`` seconds."""
+    """First-order low-pass, with its own time constant per direction.
 
-    if curve.response_time <= 0 or state.smoothed_temp is None or dt <= 0:
+    Rising and falling are smoothed separately because that is what people
+    actually want: answer a sudden load quickly, come back down gently.
+    """
+
+    previous = state.smoothed_temp
+    if previous is None or dt <= 0:
         state.smoothed_temp = raw
         return raw
-    alpha = min(1.0, dt / curve.response_time)
-    state.smoothed_temp += (raw - state.smoothed_temp) * alpha
+
+    seconds = curve.response_time_up if raw > previous else curve.response_time_down
+    if seconds <= 0:
+        state.smoothed_temp = raw
+        return raw
+
+    alpha = min(1.0, dt / seconds)
+    state.smoothed_temp = previous + (raw - previous) * alpha
     return state.smoothed_temp
+
+
+def _at_limit(curve: BaseCurve, temp: float) -> bool:
+    """True when the temperature is past either end of the curve.
+
+    Out there the output is flat, so holding the reading back with hysteresis
+    only delays the fans without changing where they end up.
+    """
+
+    if isinstance(curve, GraphCurve) and curve.points:
+        return temp <= curve.points[0].temperature or temp >= curve.points[-1].temperature
+    if isinstance(curve, LinearCurve):
+        return temp <= curve.min_temperature or temp >= curve.max_temperature
+    return False
 
 
 def _apply_hysteresis(curve: BaseCurve, state: CurveState, temp: float) -> float:
     """Return the temperature the curve should act on.
 
-    The curve keeps using the latched temperature until the reading moved
-    further than ``hysteresis`` away from it. With
-    ``hysteresis_on_drop_only`` a rising temperature passes through untouched,
-    so the fans still speed up without delay.
+    The curve keeps using the temperature it last acted on until the reading
+    has moved further than the hysteresis for that direction. Setting
+    ``hysteresis_up`` to zero - which is what FanControl's "only on drop"
+    option amounts to - lets a rise through immediately.
     """
 
-    if curve.hysteresis <= 0:
-        state.latched_temp = temp
-        return temp
-    if state.latched_temp is None:
+    if curve.ignore_hysteresis_at_limits and _at_limit(curve, temp):
         state.latched_temp = temp
         return temp
 
     latched = state.latched_temp
-    if temp > latched:
-        if curve.hysteresis_on_drop_only or temp - latched >= curve.hysteresis:
-            state.latched_temp = temp
-            return temp
-        return latched
-    if latched - temp >= curve.hysteresis:
+    if latched is None:
+        state.latched_temp = temp
+        return temp
+
+    threshold = curve.hysteresis_up if temp > latched else curve.hysteresis_down
+    if threshold <= 0 or abs(temp - latched) >= threshold:
         state.latched_temp = temp
         return temp
     return latched

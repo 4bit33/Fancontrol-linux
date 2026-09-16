@@ -314,14 +314,16 @@ class ControlEngine:
 
         value = requested + control.offset_percent
 
-        # Stopping the fan is opt-in: below the floor we either stop or hold
-        # the floor, never something in between that would stall the fan.
-        floor = control.min_percent
-        if value < floor:
-            if control.allow_stop and output.can_stop:
-                value = 0.0
-            else:
-                value = floor
+        # Stopping the fan is opt-in. FanControl keeps the stop point separate
+        # from the running minimum, because the speed at which a fan stops and
+        # the slowest speed you want it to run at are not the same number.
+        stop_threshold = control.stop_percent if control.stop_percent > 0 else control.min_percent
+        if control.allow_stop and output.can_stop and value < stop_threshold:
+            value = 0.0
+        else:
+            # Never leave it between zero and the floor, which is exactly where
+            # a fan stalls instead of turning slowly.
+            value = max(value, control.min_percent)
         value = clamp(value, 0.0, control.max_percent)
 
         # A fan that was stopped needs more than its running minimum to start

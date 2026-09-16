@@ -140,8 +140,10 @@ def bootstrap(registry: HardwareRegistry) -> Config:
             name=f"{output.name} curve",
             sensor_id=sensor_id,
             points=[CurvePoint(t, p) for t, p in DEFAULT_POINTS],
-            hysteresis=2.0,
-            response_time=3.0,
+            hysteresis_up=0.0,
+            hysteresis_down=2.0,
+            response_time_up=1.0,
+            response_time_down=4.0,
         )
         config.curves.append(curve)
         config.controls.append(

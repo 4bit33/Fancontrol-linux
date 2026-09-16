@@ -40,6 +40,7 @@ from .widgets.curve_editor import (
     CURVE_DESCRIPTIONS,
     CurveEditorDialog,
     NewCurveDialog,
+    curve_range,
     make_curve,
     sample_curve,
 )
@@ -460,6 +461,7 @@ class MainWindow(QMainWindow):
         if curve is None:
             return
         samples = sample_curve(curve)
+        self.curve_preview.set_temperature_range(*curve_range(curve))
         self.curve_preview.set_points(
             [CurvePoint(t, p) for t, p in samples] if samples else []
         )
@@ -645,10 +647,11 @@ class MainWindow(QMainWindow):
         self.refresh_all()
         skipped = outcome.get("skipped") or []
         if skipped:
+            lines = [f"{entry['name']} — {entry['reason']}" for entry in skipped]
             QMessageBox.information(
                 self, "Import",
-                "Imported. These fans had no hardware to drive here and were "
-                "left switched off:\n\n  " + "\n  ".join(skipped),
+                "Imported. These fans were left switched off:\n\n  "
+                + "\n  ".join(lines),
             )
         else:
             self.statusBar().showMessage("Imported", 3000)

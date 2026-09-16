@@ -51,7 +51,7 @@ def test_missing_sensor_is_reported_not_guessed():
 
 
 def test_hysteresis_holds_the_value_while_the_temperature_drops():
-    config = Config(curves=[graph(hysteresis=5.0, hysteresis_on_drop_only=True)])
+    config = Config(curves=[graph(hysteresis_down=5.0, hysteresis_up=0.0)])
     evaluator = CurveEvaluator(config)
     ctx = EvalContext(temperatures={"s1": 60.0}, dt=1.0)
     assert evaluator.evaluate_all(ctx)[0]["c1"] == pytest.approx(60)
@@ -66,7 +66,7 @@ def test_hysteresis_holds_the_value_while_the_temperature_drops():
 
 
 def test_hysteresis_on_drop_only_lets_the_fans_speed_up_immediately():
-    config = Config(curves=[graph(hysteresis=5.0, hysteresis_on_drop_only=True)])
+    config = Config(curves=[graph(hysteresis_down=5.0, hysteresis_up=0.0)])
     evaluator = CurveEvaluator(config)
     evaluator.evaluate_all(EvalContext(temperatures={"s1": 45.0}, dt=1.0))
     # A 2 degree rise is smaller than the hysteresis but must still get through,
@@ -75,8 +75,8 @@ def test_hysteresis_on_drop_only_lets_the_fans_speed_up_immediately():
     assert values["c1"] == pytest.approx(20 + 17 / 30 * 40)
 
 
-def test_symmetric_hysteresis_also_delays_a_rise():
-    config = Config(curves=[graph(hysteresis=5.0, hysteresis_on_drop_only=False)])
+def test_hysteresis_applies_to_a_rise_too_when_it_is_set():
+    config = Config(curves=[graph(hysteresis_up=5.0, hysteresis_down=5.0)])
     evaluator = CurveEvaluator(config)
     first = evaluator.evaluate_all(EvalContext(temperatures={"s1": 45.0}, dt=1.0))[0]["c1"]
     values, _ = evaluator.evaluate_all(EvalContext(temperatures={"s1": 47.0}, dt=1.0))
@@ -189,10 +189,55 @@ def test_validate_reports_dangling_references():
 
 
 def test_response_time_smooths_a_step_change():
-    config = Config(curves=[graph(response_time=10.0)])
+    config = Config(curves=[graph(response_time_up=10.0, response_time_down=10.0)])
     evaluator = CurveEvaluator(config)
     evaluator.evaluate_all(EvalContext(temperatures={"s1": 30.0}, dt=1.0))
     values, _ = evaluator.evaluate_all(EvalContext(temperatures={"s1": 80.0}, dt=1.0))
     # One second into a ten second filter, the curve has only moved a tenth of
     # the way, so it must be far below the 100% the raw reading would give.
     assert values["c1"] < 40
+
+
+def test_hysteresis_can_differ_in_each_direction():
+    """The usual setting: answer a rise at once, come down only after a while."""
+
+    config = Config(curves=[graph(hysteresis_up=0.0, hysteresis_down=6.0)])
+    evaluator = CurveEvaluator(config)
+
+    def run(temp):
+        return evaluator.evaluate_all(EvalContext(temperatures={"s1": temp}, dt=1.0))[0]["c1"]
+
+    # 62 C sits on the 60..80 segment, which runs from 60% to 100%.
+    assert run(60) == pytest.approx(60)
+    assert run(62) == pytest.approx(64)                  # a rise gets through at once
+    assert run(58) == pytest.approx(64)                  # a 4 degree drop does not
+    assert run(55) == pytest.approx(20 + 25 / 30 * 40)   # a 7 degree drop does
+
+
+def test_response_time_can_differ_in_each_direction():
+    config = Config(curves=[graph(response_time_up=0.0, response_time_down=20.0)])
+    evaluator = CurveEvaluator(config)
+    evaluator.evaluate_all(EvalContext(temperatures={"s1": 80.0}, dt=1.0))
+    # Rising is not smoothed at all ...
+    assert evaluator.evaluate_all(
+        EvalContext(temperatures={"s1": 80.0}, dt=1.0)
+    )[0]["c1"] == pytest.approx(100)
+    # ... but the way back down is.
+    values, _ = evaluator.evaluate_all(EvalContext(temperatures={"s1": 30.0}, dt=1.0))
+    assert values["c1"] > 90
+
+
+def test_ignore_hysteresis_at_limits_lets_the_ends_through():
+    """Past the last point the speed is flat, so holding it back only delays."""
+
+    config = Config(curves=[graph(hysteresis_down=10.0, ignore_hysteresis_at_limits=True)])
+    evaluator = CurveEvaluator(config)
+
+    def run(temp):
+        return evaluator.evaluate_all(EvalContext(temperatures={"s1": temp}, dt=1.0))[0]["c1"]
+
+    run(90)                       # above the last point at 80 C
+    assert run(85) == pytest.approx(100)
+    # Back inside the curve, the hysteresis applies again.
+    assert run(70) == pytest.approx(80)
+    assert run(66) == pytest.approx(80)

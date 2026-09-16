@@ -125,8 +125,10 @@ def test_points_stored_as_a_dictionary_are_parsed_in_order():
         (70.0, 70.0),
         (85.0, 100.0),
     ]
-    assert curve.hysteresis == 3
-    assert curve.response_time == 4
+    # The sample uses the older layout: one hysteresis value plus "only on
+    # drop", which is the same as no hysteresis on the way up.
+    assert (curve.hysteresis_up, curve.hysteresis_down) == (0.0, 3.0)
+    assert (curve.response_time_up, curve.response_time_down) == (4.0, 4.0)
 
 
 def test_guid_cross_references_are_resolved():

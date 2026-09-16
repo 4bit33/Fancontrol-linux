@@ -146,7 +146,9 @@ def test_apply_import_disables_controls_it_could_not_map(service):
     imported = service.import_fancontrol(text=json.dumps(SAMPLE))
     result = service.apply_import(imported["config"], imported["mapping"]["applied"])
 
-    assert "GPU Fan" in result["skipped"]
+    skipped = {entry["name"]: entry["reason"] for entry in result["skipped"]}
+    assert "GPU Fan" in skipped
+    assert "no fan output" in skipped["GPU Fan"]
     gpu = next(c for c in service.get_config()["controls"] if c["name"] == "GPU Fan")
     assert gpu["enabled"] is False
     assert gpu["output_id"].startswith(WIN_PREFIX)
@@ -167,27 +169,46 @@ def test_apply_import_can_merge_into_the_existing_config(service):
     assert len(outputs) == len(set(outputs)), "a PWM output must not be driven twice"
 
 
+def _drive_simulation_on_read(service, simulator, control, also_tick=False):
+    """Advance the simulation whenever calibration reads the tachometer.
+
+    Stepping the simulator from a background thread made these tests depend on
+    the scheduler: under load the thread would not run between two PWM writes
+    and the fan would read a stale zero. Driving it from the read itself is
+    deterministic.
+    """
+
+    fan = service.registry.fans[control.fan_sensor_id]
+    original = type(fan).read
+    stepping = False
+
+    def stepping_read(self=fan):
+        # service.tick() reads every fan, including this one, so guard against
+        # stepping the simulation from inside a step.
+        nonlocal stepping
+        if stepping:
+            return original(self)
+        stepping = True
+        try:
+            for _ in range(20):
+                simulator.step(0.5)
+                if also_tick:
+                    service.tick()
+        finally:
+            stepping = False
+        return original(self)
+
+    fan.read = stepping_read
+    service.calibration_settle = 0.0
+
+
 def test_calibration_measures_where_the_fan_stops_and_starts(service, simulator):
     control = service.config.controls[0]
     control.enabled = True
     service.engine.set_config(service.config)
-    service.calibration_settle = 0.05
+    _drive_simulation_on_read(service, simulator, control)
 
-    # Keep the simulated fans responding for as long as the calibration runs.
-    stop = threading.Event()
-
-    def drive_simulation():
-        while not stop.is_set():
-            simulator.step(0.5)
-            time.sleep(0.002)
-
-    worker = threading.Thread(target=drive_simulation, daemon=True)
-    worker.start()
-    try:
-        result = service.calibrate(control.id)
-    finally:
-        stop.set()
-        worker.join(timeout=2)
+    result = service.calibrate(control.id)
 
     assert result["ok"] is True
     # The simulated fan needs 12% to keep turning, so calibration has to find
@@ -196,6 +217,20 @@ def test_calibration_measures_where_the_fan_stops_and_starts(service, simulator)
     assert 0 < result["stop_percent"] <= 15
     assert result["suggested_min_percent"] > result["stop_percent"]
     assert result["start_percent"] is not None
+
+
+def test_calibration_is_recorded_on_the_control(service, simulator):
+    control = service.config.controls[0]
+    control.enabled = True
+    service.engine.set_config(service.config)
+    _drive_simulation_on_read(service, simulator, control)
+
+    service.calibrate(control.id)
+
+    assert control.calibration
+    assert all(len(sample) == 2 for sample in control.calibration)
+    percents = [sample[0] for sample in control.calibration]
+    assert percents == sorted(percents)
 
 
 def test_calibration_needs_a_tachometer(service):
@@ -229,23 +264,9 @@ def test_calibration_is_not_fought_by_the_control_loop(service, simulator):
     control.enabled = True
     control.min_percent = 40.0  # the loop would hold the fan well above stopping
     service.engine.set_config(service.config)
-    service.calibration_settle = 0.05
+    _drive_simulation_on_read(service, simulator, control, also_tick=True)
 
-    stop = threading.Event()
-
-    def run_everything():
-        while not stop.is_set():
-            simulator.step(0.5)
-            service.tick()
-            time.sleep(0.002)
-
-    worker = threading.Thread(target=run_everything, daemon=True)
-    worker.start()
-    try:
-        result = service.calibrate(control.id)
-    finally:
-        stop.set()
-        worker.join(timeout=2)
+    result = service.calibrate(control.id)
 
     assert result["ok"] is True
     assert result["stop_percent"] is not None

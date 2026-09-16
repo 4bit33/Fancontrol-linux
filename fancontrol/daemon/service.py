@@ -287,22 +287,30 @@ class FanControlService:
         with self._lock:
             HardwareMapper(self.registry).apply(imported, mapping)
 
-            # Controls whose PWM output never got mapped cannot drive anything,
-            # so they are disabled rather than left pointing at a dead id.
-            skipped: list[str] = []
+            # A control that cannot reach real hardware, or whose curve has no
+            # temperature to read, is switched off rather than left pointing at
+            # a dead identifier. The two are different problems, so say which.
+            skipped: dict[str, str] = {}
             for control in imported.controls:
-                if control.output_id.startswith("win:") or control.output_id not in self.registry.controls:
+                if (
+                    control.output_id.startswith("win:")
+                    or control.output_id not in self.registry.controls
+                ):
                     control.enabled = False
-                    skipped.append(control.name)
+                    skipped[control.name] = "no fan output on this machine matches it"
 
-            # The same goes for curves that still point at a Windows sensor.
-            for curve in imported.curves:
-                sensor_id = getattr(curve, "sensor_id", "")
-                if sensor_id.startswith("win:"):
-                    for control in imported.controls:
-                        if control.curve_id == curve.id:
-                            control.enabled = False
-                            skipped.append(control.name)
+            unresolved_curves = {
+                curve.id
+                for curve in imported.curves
+                if getattr(curve, "sensor_id", "").startswith("win:")
+            }
+            for control in imported.controls:
+                if control.curve_id in unresolved_curves and control.name not in skipped:
+                    control.enabled = False
+                    curve = next(c for c in imported.curves if c.id == control.curve_id)
+                    skipped[control.name] = (
+                        f"its curve {curve.name!r} has no temperature source yet"
+                    )
 
             if merge:
                 imported = self._merge(self.config, imported)
@@ -314,7 +322,9 @@ class FanControlService:
         result = self.set_config(imported.to_dict(), save=True)
         if not result.get("ok"):
             return result
-        return ok(skipped=sorted(set(skipped)))
+        return ok(
+            skipped=[{"name": name, "reason": reason} for name, reason in sorted(skipped.items())]
+        )
 
     @staticmethod
     def _merge(current: Config, imported: Config) -> Config:
@@ -393,6 +403,15 @@ class FanControlService:
                 if self.engine is not None:
                     self.engine.resume(control_id)
 
+        # Keep the measurement on the control, the way an imported FanControl
+        # calibration is kept, so the UI can show what this fan actually does.
+        with self._lock:
+            control = self.config.control_by_id(control_id)
+            if control is not None:
+                control.calibration = sorted(
+                    ([s["percent"], s["rpm"]] for s in samples), key=lambda pair: pair[0]
+                )
+
         result = {
             "control_id": control_id,
             "samples": samples,
@@ -401,6 +420,7 @@ class FanControlService:
             # Leave a little headroom above the measured stop point so the fan
             # does not sit right on the edge of stalling.
             "suggested_min_percent": (stop_percent + 10.0) if stop_percent is not None else None,
+            "suggested_stop_percent": stop_percent,
             "suggested_start_percent": (start_percent + 5.0) if start_percent is not None else None,
         }
         self.calibration[control_id] = result

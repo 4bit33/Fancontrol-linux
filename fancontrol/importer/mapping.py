@@ -77,6 +77,11 @@ CHIP_FAMILIES: dict[str, tuple[str, ...]] = {
     "nvidiagpu": ("nvidia",),
     "gpu-nvidia": ("nvidia",),
     "nvidia": ("nvidia",),
+    # FanControl's own NvAPI plugin, which names cards like
+    # "NVApiWrapper/0-GA104-A/control/0" rather than using the
+    # LibreHardwareMonitor scheme.
+    "nvapiwrapper": ("nvidia",),
+    "nvapi": ("nvidia",),
     "gpu-intel": ("i915", "xe"),
     "nvme": ("nvme",),
     "storage": ("nvme", "drivetemp"),
@@ -172,7 +177,44 @@ class HardwareMapper:
             self._resolve(win_id, identifier, "temperature", report)
         for win_id, identifier in sorted(result.unmapped_controls.items()):
             self._resolve(win_id, identifier, "control", report)
+        for win_id, identifier in sorted(result.unmapped_fans.items()):
+            self._resolve(win_id, identifier, "fan", report)
+        self._resolve_collisions(report)
         return report
+
+    def _resolve_collisions(self, report: MappingReport) -> None:
+        """Never point two Windows identifiers at the same Linux sensor.
+
+        They were separate things on Windows, so at most one of them can be
+        right here. This catches cases no per-identifier score can: Intel CPUs
+        expose several temperature channels that Linux labels quite differently,
+        and two of them scoring best on the same "Package id 0" is a sign that
+        the numbering did not line up, not that both belong there.
+        """
+
+        claimed: dict[str, list[str]] = {}
+        for win_id, target in report.applied.items():
+            claimed.setdefault(target, []).append(win_id)
+
+        for target, win_ids in claimed.items():
+            if len(win_ids) < 2:
+                continue
+            for win_id in win_ids:
+                del report.applied[win_id]
+                candidates = report.pending.get(win_id) or self.suggest(
+                    win_id[len(WIN_PREFIX):] if win_id.startswith(WIN_PREFIX) else win_id,
+                    self._kind_of(win_id),
+                )
+                report.pending[win_id] = candidates
+
+    @staticmethod
+    def _kind_of(win_id: str) -> str:
+        identifier = win_id.lower()
+        if "/control" in identifier:
+            return "control"
+        if "/fan" in identifier:
+            return "fan"
+        return "temperature"
 
     def apply(self, config: Config, mapping: dict[str, str]) -> None:
         """Rewrite every ``win:`` id in ``config`` using ``mapping``."""
@@ -241,16 +283,8 @@ class HardwareMapper:
         score = 0.55
         reason = f"chip family {parsed.hardware} matches {chip}"
 
-        if parsed.hardware in {"nvidiagpu", "gpu-nvidia", "nvidia"}:
-            # There is normally exactly one NVIDIA fan/temperature per GPU, and
-            # the adapter index in the identifier orders the cards.
-            score = 0.85
-            reason = "NVIDIA GPU reported by NVML"
-            if kind == "temperature" and sensor_id.endswith(":temp"):
-                score = 0.92
-            if kind == "control" and sensor_id.endswith(f":pwm{max(parsed.index, 0)}"):
-                score = 0.92
-            return score, reason
+        if chip == "nvidia":
+            return self._score_nvidia(parsed, kind, sensor_id)
 
         if kind == "temperature":
             label = sensor.name.lower()
@@ -271,6 +305,28 @@ class HardwareMapper:
             reason = f"{chip}, channel number lines up"
 
         return score, reason
+
+    def _score_nvidia(self, parsed: WinIdentifier, kind: str, sensor_id: str) -> tuple[float, str]:
+        """NVIDIA cards, however the Windows side chose to name them.
+
+        A card has one temperature but often two or three fans, so the fan
+        index has to be decisive: matching it must beat not matching it by
+        enough that the right fan is applied automatically.
+        """
+
+        channel = sensor_id.rsplit(":", 1)[-1]
+        if kind == "temperature":
+            return (0.92, "NVIDIA GPU temperature") if channel == "temp" else (0.0, "")
+
+        index = max(parsed.index, 0)
+        expected = ("pwm" if kind == "control" else "fan") + str(index)
+        if channel == expected:
+            return 0.92, f"NVIDIA GPU, fan {index + 1}"
+        if channel.startswith("pwm" if kind == "control" else "fan"):
+            # Right card, wrong fan: offer it, but well below the match so the
+            # two never end up within auto-apply distance of each other.
+            return 0.45, "NVIDIA GPU, but a different fan"
+        return 0.0, ""
 
     def _score_lpc(
         self, parsed: WinIdentifier, kind: str, sensor_id: str, sensor, chip: str

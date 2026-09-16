@@ -1,15 +1,23 @@
 """Importer for FanControl (Windows) ``userConfig.json`` files.
 
-The Windows application serialises a .NET object graph, and the exact shape has
-drifted between releases: curves have been referenced by name and later by
-GUID, point lists have been stored both as dictionaries and as arrays, and most
-property names exist in two or three spellings. Rather than pinning one schema,
-this module finds the interesting objects structurally — an object that has
-``Points`` and a temperature source is a graph curve no matter where in the
-document it sits — and reads every field through a list of aliases.
+The file is a serialised .NET object graph and its shape has drifted between
+releases, so nothing here assumes one schema. The interesting objects are found
+structurally - an object with ``Points`` and a temperature source is a graph
+curve wherever it sits in the document - and every field is read through a list
+of aliases.
 
-Hardware identifiers are kept verbatim as ``win:<identifier>`` sensor ids. They
-are meaningless on Linux, so :mod:`fancontrol.importer.mapping` resolves them
+Formats seen so far, all of which this reads:
+
+* curve points as ``"20.4,21.0"`` strings (version 270), as a
+  ``{"30": 20}`` dictionary, and as ``[{"X": 30, "Y": 20}]`` objects;
+* curves referenced by GUID, by bare name, and by ``{"Name": "..."}``;
+* hysteresis as one number, and as a ``HysteresisConfig`` object with separate
+  up and down values;
+* identifiers from LibreHardwareMonitor (``/lpc/it8689e/control/0``) and from
+  FanControl's NvAPI plugin (``NVApiWrapper/0-GA104-A/control/0``).
+
+Hardware identifiers are kept verbatim as ``win:<identifier>`` ids. They are
+meaningless on Linux, so :mod:`fancontrol.importer.mapping` resolves them
 against the machine's real hardware afterwards; anything it cannot resolve is
 reported for the user to fix by hand instead of being silently dropped.
 """
@@ -50,6 +58,8 @@ class ImportResult:
     #: keyed by the ``win:`` sensor id.
     unmapped_sensors: dict[str, str] = field(default_factory=dict)
     unmapped_controls: dict[str, str] = field(default_factory=dict)
+    #: Tachometers a control was paired with on Windows.
+    unmapped_fans: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -153,6 +163,23 @@ def _temp_source(obj: dict[str, Any]) -> str:
 # curve points
 
 
+def _parse_point_string(text: str) -> CurvePoint | None:
+    """Parse ``"20.44826019013703,20.950755555555546"``.
+
+    Version 270 stores each point as one string of temperature and percentage.
+    The numbers use a dot for the decimal point regardless of the machine's
+    locale, so a single comma always separates the two values.
+    """
+
+    parts = text.split(",")
+    if len(parts) != 2:
+        return None
+    try:
+        return CurvePoint(float(parts[0]), float(parts[1]))
+    except ValueError:
+        return None
+
+
 def _parse_points(raw: Any) -> list[CurvePoint]:
     """Accept every point encoding FanControl has used."""
 
@@ -175,6 +202,10 @@ def _parse_points(raw: Any) -> list[CurvePoint]:
                     points.append(CurvePoint(float(temp), float(percent)))
                 except (TypeError, ValueError):
                     continue
+            elif isinstance(item, str):
+                point = _parse_point_string(item)
+                if point is not None:
+                    points.append(point)
             elif isinstance(item, (list, tuple)) and len(item) >= 2:
                 try:
                     points.append(CurvePoint(float(item[0]), float(item[1])))
@@ -184,6 +215,31 @@ def _parse_points(raw: Any) -> list[CurvePoint]:
     return points
 
 
+def _parse_calibration(raw: Any) -> list[list[float]]:
+    """FanControl's measured speed table: ``[[percent, rpm, interpolated], ...]``.
+
+    Only the first two numbers are kept; the third flag marks points FanControl
+    filled in itself rather than measured.
+    """
+
+    if not isinstance(raw, list):
+        return []
+    samples: list[list[float]] = []
+    for entry in raw:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        try:
+            samples.append([float(entry[0]), float(entry[1])])
+        except (TypeError, ValueError):
+            continue
+    samples.sort(key=lambda pair: pair[0])
+    return samples
+
+
+#: FanControl stores the mix function as a number. This is the order its enum
+#: is documented with; it is the one thing in this importer that cannot be
+#: confirmed from a config file alone, so an imported mix curve always says in
+#: the warnings which function it ended up with.
 MIX_FUNCTIONS = {
     0: MixFunction.MAX,
     1: MixFunction.MIN,
@@ -225,16 +281,38 @@ CURVE_TYPE_HINTS = (
 )
 
 
+#: Fields that only ever appear on a control. An object carrying one of these
+#: is a fan, not a sensor entry that happens to have an identifier.
+CONTROL_MARKERS = (
+    "SelectedFanCurve",
+    "SelectedCurveId",
+    "SelectedCurveName",
+    "SelectedCurve",
+    "CurveId",
+    "ManualControl",
+    "MinimumPercent",
+    "SelectedStart",
+    "SelectedStop",
+    "PairedFanSensor",
+    "SelectedCommandStepUp",
+    "Calibration",
+    "ForceApply",
+)
+
+MIX_INPUT_FIELDS = ("SelectedFanCurves", "SelectedCurves", "Curves", "CurveIds", "SelectedCurveIds")
+
+
 def _looks_like_curve(obj: dict[str, Any]) -> bool:
     type_name = _type_name(obj).lower()
     if "curve" in type_name:
         return True
+    # A bare {"Name": "..."} is a reference to a curve, not a curve.
     if _get(obj, "Name") is None and _get(obj, "Id") is None:
         return False
     markers = (
         _get(obj, "Points") is not None,
         _temp_source(obj) != "" and _get(obj, "Identifier") is None,
-        _get(obj, "SelectedCurves", "Curves", "CurveIds") is not None,
+        _get(obj, *MIX_INPUT_FIELDS) is not None,
         _get(obj, "TargetTemperature", "TargetTemp") is not None,
         _get(obj, "IdleTemperature") is not None and _get(obj, "LoadTemperature") is not None,
     )
@@ -249,7 +327,7 @@ def _curve_kind(obj: dict[str, Any]) -> str:
     # No usable discriminator: fall back to the fields that are present.
     if _get(obj, "Points") is not None:
         return "graph"
-    if _get(obj, "SelectedCurves", "Curves", "CurveIds") is not None:
+    if _get(obj, *MIX_INPUT_FIELDS) is not None:
         return "mix"
     if _get(obj, "TargetTemperature", "TargetTemp") is not None:
         return "target"
@@ -265,13 +343,21 @@ def _curve_kind(obj: dict[str, Any]) -> str:
 
 
 def _looks_like_control(obj: dict[str, Any]) -> bool:
+    """Is this object a fan we can drive?
+
+    Identifiers alone are not enough to tell. A ``PairedFanSensor`` reference
+    and an entry in ``FanSensors`` both carry a ``/fan/`` identifier, and
+    treating those as controls produced three phantom fans per real one. So a
+    control either says ``/control/`` in its identifier, or carries a field
+    that only a control has.
+    """
+
     identifier = _identifier_of(_get(obj, "Identifier", "ControlIdentifier"))
     if not identifier:
         return False
-    if "/control" in identifier.lower() or "/fan" in identifier.lower():
+    if "/control/" in identifier.lower():
         return True
-    # Controls always carry a curve selection of some kind.
-    return _get(obj, "SelectedCurveId", "SelectedCurveName", "SelectedCurve", "CurveId") is not None
+    return any(_get(obj, marker) is not None for marker in CONTROL_MARKERS)
 
 
 # ----------------------------------------------------------------------
@@ -346,7 +432,8 @@ class FanControlImporter:
         for obj in control_objects:
             config.controls.append(self._build_control(obj))
 
-        self._collect_sensor_names(config)
+        # Only names the user actually chose on Windows are carried over; a
+        # raw identifier is worse than the name Linux gives the sensor.
         config.sensor_names.update(self._sensor_labels)
 
         result = ImportResult(config=config, warnings=list(self.warnings))
@@ -394,13 +481,6 @@ class FanControlImporter:
                 else:
                     self._sensor_labels[WIN_PREFIX + identifier] = nickname.strip()
 
-    def _collect_sensor_names(self, config: Config) -> None:
-        for curve in config.curves:
-            for sensor_id in curve.sensor_ids():
-                self._sensor_labels.setdefault(
-                    sensor_id, sensor_id[len(WIN_PREFIX):] if sensor_id.startswith(WIN_PREFIX) else sensor_id
-                )
-
     # -- curves -------------------------------------------------------
 
     def _curve_name(self, obj: dict[str, Any], index: int) -> str:
@@ -418,21 +498,45 @@ class FanControlImporter:
         keys.append(name)
         return keys
 
-    def _build_curve(self, obj: dict[str, Any], curve_id: str, name: str):
-        kind = _curve_kind(obj)
-        hysteresis = _as_float(_get(obj, "Hysteresis", "HysteresisDegrees", "TempHysteresis"), 0.0)
+    def _smoothing(self, obj: dict[str, Any]) -> dict[str, Any]:
+        """Read hysteresis and response time in either of the two layouts.
+
+        Version 270 nests them in a ``HysteresisConfig`` object with separate
+        up and down values; older files had one number for each, plus a flag
+        that meant "only apply it while the temperature drops".
+        """
+
+        config = _get(obj, "HysteresisConfig", "Hysteresis")
+        if isinstance(config, dict):
+            return {
+                "hysteresis_up": _as_float(_get(config, "HysteresisValueUp", "ValueUp", "Up"), 0.0),
+                "hysteresis_down": _as_float(
+                    _get(config, "HysteresisValueDown", "ValueDown", "Down"), 0.0
+                ),
+                "response_time_up": _as_float(_get(config, "ResponseTimeUp"), 0.0),
+                "response_time_down": _as_float(_get(config, "ResponseTimeDown"), 0.0),
+                "ignore_hysteresis_at_limits": _as_bool(
+                    _get(config, "IgnoreHysteresisAtLimits", "IgnoreAtLimits"), False
+                ),
+            }
+
+        value = _as_float(_get(obj, "Hysteresis", "HysteresisDegrees", "TempHysteresis"), 0.0)
         drop_only = _as_bool(
             _get(obj, "HysteresisOnlyOnDrop", "HysteresisDrop", "ApplyHysteresisOnDropOnly"),
             True,
         )
         response = _as_float(_get(obj, "ResponseTime", "ResponseTimeSeconds", "Smoothing"), 0.0)
-        common = {
-            "id": curve_id,
-            "name": name,
-            "hysteresis": hysteresis,
-            "hysteresis_on_drop_only": drop_only,
-            "response_time": response,
+        return {
+            "hysteresis_up": 0.0 if drop_only else value,
+            "hysteresis_down": value,
+            "response_time_up": response,
+            "response_time_down": response,
+            "ignore_hysteresis_at_limits": False,
         }
+
+    def _build_curve(self, obj: dict[str, Any], curve_id: str, name: str):
+        kind = _curve_kind(obj)
+        common = {"id": curve_id, "name": name, **self._smoothing(obj)}
 
         sensor = _temp_source(obj)
         sensor_id = WIN_PREFIX + sensor if sensor else ""
@@ -442,7 +546,22 @@ class FanControlImporter:
             if not points:
                 self.warnings.append(f"curve {name!r} has no points; using a safe default ramp")
                 points = [CurvePoint(30, 30), CurvePoint(60, 60), CurvePoint(80, 100)]
-            return GraphCurve(**common, sensor_id=sensor_id, points=points)
+            # The axis range matters for editing: a GPU curve drawn up to 120 C
+            # would have points off the end of a 0..100 graph.
+            axis_min = _as_float(_get(obj, "MinimumTemperature", "MinTemperature"), 0.0)
+            axis_max = _as_float(_get(obj, "MaximumTemperature", "MaxTemperature"), 100.0)
+            if axis_max <= axis_min:
+                axis_min, axis_max = 0.0, 100.0
+            # Make sure every imported point is actually reachable on the graph.
+            axis_min = min(axis_min, min(p.temperature for p in points))
+            axis_max = max(axis_max, max(p.temperature for p in points))
+            return GraphCurve(
+                **common,
+                sensor_id=sensor_id,
+                points=points,
+                axis_min_temperature=float(int(axis_min)),
+                axis_max_temperature=float(int(axis_max + 0.999)),
+            )
 
         if kind == "flat":
             percent = _as_float(_get(obj, "Value", "Speed", "Percent", "FanSpeed"), 50.0)
@@ -491,7 +610,7 @@ class FanControlImporter:
             )
 
         if kind == "mix":
-            raw_refs = _get(obj, "SelectedCurves", "Curves", "CurveIds", "SelectedCurveIds", default=[])
+            raw_refs = _get(obj, *MIX_INPUT_FIELDS, default=[])
             refs: list[str] = []
             if isinstance(raw_refs, list):
                 for item in raw_refs:
@@ -507,11 +626,14 @@ class FanControlImporter:
                     self.warnings.append(
                         f"mix curve {name!r} references curve {key!r} which is not in the file"
                     )
-            return MixCurve(
-                **common,
-                curve_ids=resolved,
-                function=_parse_mix_function(_get(obj, "MixFunction", "Function", "Mode")),
-            )
+            raw_function = _get(obj, "SelectedMixFunction", "MixFunction", "Function", "Mode")
+            function = _parse_mix_function(raw_function)
+            if isinstance(raw_function, (int, float)) and not isinstance(raw_function, bool):
+                self.warnings.append(
+                    f"mix curve {name!r} was stored as function number {int(raw_function)}, "
+                    f"read as {function!r} — worth checking against FanControl"
+                )
+            return MixCurve(**common, curve_ids=resolved, function=function)
 
         if kind == "sync":
             target = _identifier_of(_get(obj, "SelectedControl", "SelectedFan", "ControlId"))
@@ -538,7 +660,8 @@ class FanControlImporter:
         name = _get(obj, "NickName", "Name", default="") or identifier
 
         curve_ref = _identifier_of(
-            _get(obj, "SelectedCurveId", "SelectedCurveName", "SelectedCurve", "CurveId")
+            _get(obj, "SelectedFanCurve", "SelectedCurveId", "SelectedCurveName",
+                 "SelectedCurve", "CurveId")
         )
         curve_id = self._curve_keys.get(curve_ref, "")
         if curve_ref and not curve_id:
@@ -552,21 +675,45 @@ class FanControlImporter:
         if maximum <= 0:
             maximum = 100.0
 
+        start = _as_float(
+            _get(obj, "SelectedStart", "StartPercent", "StartSpeed", "FanStartSpeed"), 0.0
+        )
+        stop = _as_float(_get(obj, "SelectedStop", "StopPercent", "StopSpeed"), 0.0)
+
+        # Version 270 has no "may this fan stop" flag: a stop point above zero
+        # is what says the fan can be switched off. Fans calibrated as never
+        # stopping have both numbers at zero.
+        allow_stop = _as_bool(
+            _get(obj, "StopEnabled", "CanStop", "FanStop", "AllowStop"), stop > 0
+        )
+
+        paired = _identifier_of(_get(obj, "PairedFanSensor", "FanSensor", "PairedFan"))
+
         return Control(
             id=control_id,
             name=str(name),
             output_id=WIN_PREFIX + identifier if identifier else "",
             curve_id="" if manual else curve_id,
-            enabled=_as_bool(_get(obj, "Enabled", "IsEnabled"), True),
-            manual_percent=_as_float(_get(obj, "ManualValue", "CurrentValue", "Speed"), 50.0),
+            enabled=_as_bool(_get(obj, "Enable", "Enabled", "IsEnabled"), True),
+            manual_percent=_as_float(
+                _get(obj, "ManualControlValue", "ManualValue", "CurrentValue", "Speed"), 50.0
+            ),
             min_percent=minimum,
             max_percent=maximum,
-            offset_percent=_as_float(_get(obj, "Offset", "OffsetPercent"), 0.0),
-            allow_stop=_as_bool(_get(obj, "StopEnabled", "CanStop", "FanStop", "AllowStop"), False),
-            start_percent=_as_float(_get(obj, "StartPercent", "StartSpeed", "FanStartSpeed"), 40.0),
-            step_up=_as_float(_get(obj, "StepUp", "SpeedUpStep"), 0.0),
-            step_down=_as_float(_get(obj, "StepDown", "SpeedDownStep"), 0.0),
+            offset_percent=_as_float(_get(obj, "SelectedOffset", "Offset", "OffsetPercent"), 0.0),
+            allow_stop=allow_stop,
+            stop_percent=stop,
+            # FanControl limits the command change per update cycle; with the
+            # default roughly one second cycle that is the same number per
+            # second, which is how this program expresses it.
+            step_up=_as_float(_get(obj, "SelectedCommandStepUp", "StepUp", "SpeedUpStep"), 0.0),
+            step_down=_as_float(
+                _get(obj, "SelectedCommandStepDown", "StepDown", "SpeedDownStep"), 0.0
+            ),
+            start_percent=start,
+            fan_sensor_id=WIN_PREFIX + paired if paired else "",
             hidden=_as_bool(_get(obj, "IsHidden", "Hidden"), False),
+            calibration=_parse_calibration(_get(obj, "Calibration")),
         )
 
     # -- reporting ----------------------------------------------------
@@ -580,6 +727,8 @@ class FanControlImporter:
         for control in config.controls:
             if control.output_id.startswith(WIN_PREFIX):
                 result.unmapped_controls[control.output_id] = control.output_id[len(WIN_PREFIX):]
+            if control.fan_sensor_id.startswith(WIN_PREFIX):
+                result.unmapped_fans[control.fan_sensor_id] = control.fan_sensor_id[len(WIN_PREFIX):]
 
 
 def import_file(path: str | Path) -> ImportResult:

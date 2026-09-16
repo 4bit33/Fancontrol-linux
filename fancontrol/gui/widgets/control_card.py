@@ -52,8 +52,15 @@ class ControlSettingsDialog(QDialog):
         self.allow_stop = QCheckBox("Let the fan stop completely")
         self.allow_stop.setChecked(control.allow_stop)
         self.allow_stop.setToolTip(
-            "When the curve asks for less than the minimum, switch the fan off\n"
-            "instead of holding the minimum."
+            "When the curve asks for less than the stop point, switch the fan\n"
+            "off instead of holding the minimum."
+        )
+
+        self.stop_percent = self._spin(0, 100, control.stop_percent, " %")
+        self.stop_percent.setToolTip(
+            "Below this the fan is switched off rather than run slowly.\n"
+            "0 uses the minimum speed as the threshold. Run Calibrate to\n"
+            "measure where this fan actually stops."
         )
 
         self.start_percent = self._spin(0, 100, control.start_percent, " %")
@@ -83,6 +90,7 @@ class ControlSettingsDialog(QDialog):
         form.addRow("Maximum speed", self.max_percent)
         form.addRow("Offset", self.offset)
         form.addRow("", self.allow_stop)
+        form.addRow("Stop below", self.stop_percent)
         form.addRow("Start at", self.start_percent)
         form.addRow("Start for", self.start_duration)
         form.addRow("Speed up limit", self.step_up)
@@ -90,10 +98,32 @@ class ControlSettingsDialog(QDialog):
         form.addRow("Fan tachometer", self.fan_sensor)
         layout.addLayout(form)
 
+        if control.calibration:
+            measured = QLabel(self._calibration_summary(control))
+            measured.setWordWrap(True)
+            measured.setEnabled(False)
+            layout.addWidget(measured)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _calibration_summary(control: Control) -> str:
+        """One line describing what this fan was measured doing."""
+
+        samples = [(p[0], p[1]) for p in control.calibration if len(p) >= 2]
+        if not samples:
+            return ""
+        spinning = [percent for percent, rpm in samples if rpm > 0]
+        top = max(rpm for _percent, rpm in samples)
+        if not spinning:
+            return "Measured: never turned at any speed."
+        lowest = min(spinning)
+        if lowest <= min(percent for percent, _rpm in samples):
+            return f"Measured: turns even at {lowest:.0f}%, up to {top:.0f} rpm."
+        return f"Measured: turns from {lowest:.0f}% upwards, up to {top:.0f} rpm."
 
     @staticmethod
     def _spin(low, high, value, suffix, decimals=0) -> QDoubleSpinBox:
@@ -109,6 +139,7 @@ class ControlSettingsDialog(QDialog):
         control.max_percent = self.max_percent.value()
         control.offset_percent = self.offset.value()
         control.allow_stop = self.allow_stop.isChecked()
+        control.stop_percent = self.stop_percent.value()
         control.start_percent = self.start_percent.value()
         control.start_duration = self.start_duration.value()
         control.step_up = self.step_up.value()
