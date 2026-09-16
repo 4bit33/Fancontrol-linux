@@ -209,6 +209,7 @@ class ControlEngine:
             "output_id": control.output_id,
             "enabled": control.enabled,
             "managed": False,
+            "available": output is not None,
             "rpm": fans.get(control.fan_sensor_id) if control.fan_sensor_id else None,
             "stalled": False,
             "error": "",
@@ -216,8 +217,12 @@ class ControlEngine:
         }
 
         if output is None:
-            rt.last_error = f"output {control.output_id!r} was not found"
-            entry["error"] = rt.last_error
+            # A control the user deliberately turned off is not a problem worth
+            # shouting about, even when its hardware is missing - that is the
+            # normal state of an imported control with nothing to drive here.
+            if control.enabled:
+                rt.last_error = f"output {control.output_id!r} was not found"
+                entry["error"] = rt.last_error
             entry["requested_percent"] = 0.0
             entry["applied_percent"] = 0.0
             entry["hardware_percent"] = None

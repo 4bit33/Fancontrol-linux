@@ -300,8 +300,11 @@ class HardwareMapper:
         score = 0.55 + 0.25 * ratio
         reason = f"super-I/O chip {win_chip} matches {chip}"
 
+        # The channel bonus has to be decisive: on a super-I/O chip every
+        # channel matches the chip name equally well, so the number is the only
+        # thing telling pwm1 from pwm2.
         if _channel_index(sensor_id) == parsed.index + 1:
-            score += 0.15
+            score += 0.20
             reason += ", channel number lines up"
         elif _channel_index(sensor_id) == parsed.index:
             score += 0.05
