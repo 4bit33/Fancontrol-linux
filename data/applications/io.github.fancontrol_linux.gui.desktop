@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Fan Control
+GenericName=Fan control
+Comment=Drive your fans from temperature curves
+Exec=fancontrol-gui
+Icon=sensors-fan
+Terminal=false
+Categories=System;Settings;HardwareSettings;Qt;
+Keywords=fan;pwm;cooling;temperature;hwmon;rpm;
+StartupNotify=true

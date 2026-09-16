@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .. import __version__
 from ..core import config as config_module
+from ..sdnotify import notify as _notify_systemd
 from .service import FanControlService
 
 log = logging.getLogger("fancontrold")
@@ -27,24 +28,6 @@ def _setup_logging(verbose: bool) -> None:
         format=fmt,
         datefmt="%H:%M:%S",
     )
-
-
-def _notify_systemd(state: str) -> None:
-    """Best-effort sd_notify, so ``Type=notify`` units start cleanly."""
-
-    address = os.environ.get("NOTIFY_SOCKET")
-    if not address:
-        return
-    import socket
-
-    if address.startswith("@"):
-        address = "\0" + address[1:]
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
-            sock.connect(address)
-            sock.sendall(state.encode())
-    except OSError:
-        log.debug("sd_notify failed", exc_info=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,10 +109,11 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, handle_stop)
     signal.signal(signal.SIGHUP, handle_reload)
 
-    _notify_systemd("READY=1")
-
     try:
         if args.no_dbus:
+            # Nothing registers on the bus in this mode, so announce readiness
+            # here instead.
+            _notify_systemd("READY=1")
             service.run_forever()
             return 0
         from .dbus_service import serve

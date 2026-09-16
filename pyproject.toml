@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fancontrol-linux"
+version = "0.1.0"
+description = "Fan control for Linux, in the shape of FanControl for Windows"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Hardware",
+]
+
+# The daemon deliberately has no install_requires: it reads sysfs and talks to
+# NVML through ctypes, so it runs on a bare Python. dasbus is only needed to
+# publish the D-Bus service and PySide6 only for the window; both are listed as
+# extras and packaged separately on Fedora.
+dependencies = []
+
+[project.optional-dependencies]
+daemon = ["dasbus>=1.6"]
+gui = ["PySide6>=6.5"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+fancontrold = "fancontrol.daemon.__main__:main"
+fanctl = "fancontrol.cli:main"
+fancontrol-gui = "fancontrol.gui.__main__:main"
+fancontrol-sim = "fancontrol.hw.simulator:main"
+
+[tool.setuptools.packages.find]
+include = ["fancontrol*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning:fancontrol.*"]

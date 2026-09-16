@@ -26,6 +26,7 @@ from dasbus.server.interface import dbus_interface, dbus_signal
 from dasbus.typing import Bool, Double, Str
 
 from ..dbus_names import BUS_NAME, INTERFACE, OBJECT_PATH
+from ..sdnotify import notify as sd_notify
 from .service import FanControlService, fail
 
 log = logging.getLogger(__name__)
@@ -144,6 +145,9 @@ def serve(service: FanControlService, session: bool = False) -> int:
 
     loop = EventLoop()
     service.start_background()
+    # Only now is the service actually reachable, so this is when systemd may
+    # consider the unit started.
+    sd_notify("READY=1")
     try:
         loop.run()
     except KeyboardInterrupt:

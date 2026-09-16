@@ -1,0 +1,38 @@
+[Unit]
+Description=Fan control daemon
+Documentation=https://github.com/4bit33/Fancontrol-linux
+# The super-I/O driver has to be loaded before the PWM outputs exist.
+After=systemd-modules-load.service dbus.service
+Requires=dbus.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/fancontrold
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Giving the fans back to the firmware on the way out matters more than a fast
+# shutdown, so allow the daemon time to restore every pwm*_enable it changed.
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/fancontrol-linux
+# /sys stays writable under ProtectSystem=strict, which is what the PWM writes
+# need. ProtectKernelTunables would take that away, so it is deliberately off.
+ProtectKernelTunables=no
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

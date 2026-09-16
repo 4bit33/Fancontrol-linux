@@ -7,3 +7,4 @@ dist/
 .venv/
 venv/
 *.bak
+docs/screenshots/*.tmp.png
