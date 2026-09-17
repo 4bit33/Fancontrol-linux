@@ -125,8 +125,27 @@ for module in it87 nct6775 nct6683; do
     done
 done
 if command -v dmesg >/dev/null; then
-    detection="$(dmesg 2>/dev/null | grep -iE 'it87|nct67' | tail -6)"
+    detection="$(dmesg 2>/dev/null | grep -iE 'it87|nct67' | tail -8)"
     [[ -n "$detection" ]] && { echo "  what the driver said when it loaded:"; echo "$detection" | sed 's/^/    /'; }
+
+    # The same chip identified two different ways is the thing to catch here:
+    # reloading the module can leave the super-I/O in a state where detection
+    # picks the wrong ID, and the wrong ID means the wrong register map.
+    conflicts="$(dmesg 2>/dev/null \
+        | grep -oiE 'Found [A-Z0-9]+ chip at 0x[0-9a-f]+' \
+        | awk '{ print $NF, $2 }' | sort -u \
+        | awk '{ seen[$1] = seen[$1] " " $2; count[$1]++ }
+               END { for (addr in count) if (count[addr] > 1)
+                         print "    " addr " has been identified as:" seen[addr] }')"
+    if [[ -n "$conflicts" ]]; then
+        echo
+        printf '  \033[31m%s\033[0m\n' "The driver has identified the same chip more than one way:"
+        echo "$conflicts"
+        echo "    Only the first, at boot, was made with the chip in a known state."
+        echo "    Reboot and run this again before changing anything else: the"
+        echo "    wrong ID means the wrong register map, which is enough on its"
+        echo "    own to explain channels that will not respond."
+    fi
 fi
 echo
 
