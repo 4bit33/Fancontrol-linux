@@ -12,7 +12,6 @@
 #
 set -u
 
-CHIP="${CHIP:-it8689}"
 BASELINE="${BASELINE:-77}"    # about 30%, low but above where most fans stall
 FULL=255
 SETTLE="${SETTLE:-4}"         # seconds for a fan to reach its new speed
@@ -25,27 +24,52 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# FANCONTROL_HWMON_ROOT points this at a simulated tree, the same way the
-# daemon takes it, so the script can be exercised without real fans.
 HWMON_ROOT="${FANCONTROL_HWMON_ROOT:-/sys/class/hwmon}"
 
-HWMON=""
-for candidate in "$HWMON_ROOT"/hwmon*; do
-    [[ -r "$candidate/name" ]] || continue
-    if [[ "$(cat "$candidate/name")" == "$CHIP" ]]; then
-        HWMON="$candidate"
-        break
-    fi
-done
-if [[ -z "$HWMON" ]]; then
-    echo "No hwmon chip called '$CHIP' was found. What is here:"
+# Find the chip to work on. A name can be given with CHIP=, but the default is
+# simply "the one that has PWM outputs", because that is what we need and
+# because a name that does not match is a dead end with nothing to go on.
+list_chips() {
+    local candidate name pwms temps fans
     for candidate in "$HWMON_ROOT"/hwmon*; do
-        [[ -r "$candidate/name" ]] && echo "    $(cat "$candidate/name")  ($candidate)"
+        [[ -r "$candidate/name" ]] || continue
+        name="$(cat "$candidate/name")"
+        pwms=$(ls "$candidate"/pwm[0-9] 2>/dev/null | grep -cE 'pwm[0-9]+$' || true)
+        fans=$(ls "$candidate"/fan[0-9]_input 2>/dev/null | wc -l)
+        temps=$(ls "$candidate"/temp[0-9]_input 2>/dev/null | wc -l)
+        printf '%s\t%s\t%s\t%s\t%s\n' "$candidate" "$name" "$pwms" "$fans" "$temps"
     done
+}
+
+find_chip() {
+    local line path name pwms
+    while IFS=$'\t' read -r path name pwms _ _; do
+        [[ -n "${CHIP:-}" && "$name" != "$CHIP" ]] && continue
+        (( pwms > 0 )) && { echo "$path"; return 0; }
+    done < <(list_chips)
+    return 1
+}
+
+if ! HWMON="$(find_chip)"; then
     echo
-    echo "Pick one with:  sudo CHIP=<name> $0"
+    if [[ -n "${CHIP:-}" ]]; then
+        echo "No chip called '$CHIP' with PWM outputs was found."
+    else
+        echo "No hwmon chip with PWM outputs was found."
+    fi
+    echo
+    printf '  %-28s %-16s %s\n' "path" "name" "pwm / fan / temp"
+    while IFS=$'\t' read -r path name pwms fans temps; do
+        printf '  %-28s %-16s %s / %s / %s\n' "$path" "$name" "$pwms" "$fans" "$temps"
+    done < <(list_chips)
+    echo
+    echo "If the chip you expect is missing, its driver is not loaded:"
+    echo "    sudo modprobe it87        # Gigabyte and other ITE boards"
+    echo "    sudo modprobe nct6775     # Asus, MSI and others"
+    echo "If it is listed but has no PWM, that driver exposes no fan control."
     exit 1
 fi
+CHIP="$(cat "$HWMON/name")"
 
 mapfile -t PWMS < <(ls "$HWMON"/pwm[0-9] 2>/dev/null | grep -E 'pwm[0-9]+$' | sort -V)
 mapfile -t FANS < <(ls "$HWMON"/fan[0-9]_input 2>/dev/null | sort -V)

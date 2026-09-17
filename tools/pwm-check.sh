@@ -18,23 +18,61 @@
 #
 set -u
 
-CHIP="${CHIP:-it8689}"
 SETTLE="${SETTLE:-8}"
 HIGH=255
 LOW=60
-HWMON_ROOT="${FANCONTROL_HWMON_ROOT:-/sys/class/hwmon}"
 
 if [[ $EUID -ne 0 ]]; then
     echo "Needs root:  sudo $0"
     exit 1
 fi
 
-HWMON=""
-for candidate in "$HWMON_ROOT"/hwmon*; do
-    [[ -r "$candidate/name" ]] || continue
-    [[ "$(cat "$candidate/name")" == "$CHIP" ]] && { HWMON="$candidate"; break; }
-done
-[[ -z "$HWMON" ]] && { echo "No chip called '$CHIP' found."; exit 1; }
+HWMON_ROOT="${FANCONTROL_HWMON_ROOT:-/sys/class/hwmon}"
+
+# Find the chip to work on. A name can be given with CHIP=, but the default is
+# simply "the one that has PWM outputs", because that is what we need and
+# because a name that does not match is a dead end with nothing to go on.
+list_chips() {
+    local candidate name pwms temps fans
+    for candidate in "$HWMON_ROOT"/hwmon*; do
+        [[ -r "$candidate/name" ]] || continue
+        name="$(cat "$candidate/name")"
+        pwms=$(ls "$candidate"/pwm[0-9] 2>/dev/null | grep -cE 'pwm[0-9]+$' || true)
+        fans=$(ls "$candidate"/fan[0-9]_input 2>/dev/null | wc -l)
+        temps=$(ls "$candidate"/temp[0-9]_input 2>/dev/null | wc -l)
+        printf '%s\t%s\t%s\t%s\t%s\n' "$candidate" "$name" "$pwms" "$fans" "$temps"
+    done
+}
+
+find_chip() {
+    local line path name pwms
+    while IFS=$'\t' read -r path name pwms _ _; do
+        [[ -n "${CHIP:-}" && "$name" != "$CHIP" ]] && continue
+        (( pwms > 0 )) && { echo "$path"; return 0; }
+    done < <(list_chips)
+    return 1
+}
+
+if ! HWMON="$(find_chip)"; then
+    echo
+    if [[ -n "${CHIP:-}" ]]; then
+        echo "No chip called '$CHIP' with PWM outputs was found."
+    else
+        echo "No hwmon chip with PWM outputs was found."
+    fi
+    echo
+    printf '  %-28s %-16s %s\n' "path" "name" "pwm / fan / temp"
+    while IFS=$'\t' read -r path name pwms fans temps; do
+        printf '  %-28s %-16s %s / %s / %s\n' "$path" "$name" "$pwms" "$fans" "$temps"
+    done < <(list_chips)
+    echo
+    echo "If the chip you expect is missing, its driver is not loaded:"
+    echo "    sudo modprobe it87        # Gigabyte and other ITE boards"
+    echo "    sudo modprobe nct6775     # Asus, MSI and others"
+    echo "If it is listed but has no PWM, that driver exposes no fan control."
+    exit 1
+fi
+CHIP="$(cat "$HWMON/name")"
 
 mapfile -t PWMS < <(ls "$HWMON"/pwm[0-9] 2>/dev/null | grep -E 'pwm[0-9]+$' | sort -V)
 mapfile -t FANS < <(ls "$HWMON"/fan[0-9]_input 2>/dev/null | sort -V)
@@ -77,14 +115,13 @@ echo "Chip $CHIP at $HWMON"
 echo "Kernel module: $(basename "$(readlink -f "$HWMON/device/driver" 2>/dev/null)" 2>/dev/null || echo unknown)"
 echo
 
-# Anything else claiming the same readings is worth knowing about.
-echo "Other chips reporting temperatures:"
-for candidate in "$HWMON_ROOT"/hwmon*; do
-    [[ -r "$candidate/name" ]] || continue
-    name="$(cat "$candidate/name")"
-    temps="$(ls "$candidate"/temp[0-9]_input 2>/dev/null | wc -l)"
-    (( temps > 0 )) && printf '  %-16s %s temperature(s)\n' "$name" "$temps"
-done
+# Two chips reporting the same readings is a sign they are the same source,
+# which matters before blaming the driver.
+echo "Every chip on this machine:"
+printf '  %-28s %-16s %s\n' "path" "name" "pwm / fan / temp"
+while IFS=$'\t' read -r path name pwms fans temps; do
+    printf '  %-28s %-16s %s / %s / %s\n' "$path" "$name" "$pwms" "$fans" "$temps"
+done < <(list_chips)
 
 echo
 echo "All fan readings right now:  $(show_fans)"
