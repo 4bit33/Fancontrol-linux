@@ -88,13 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             "'sudo sensors-detect'."
         )
 
-    stopping = False
-
     def handle_stop(signum, _frame):
-        nonlocal stopping
-        if stopping:
-            return
-        stopping = True
         log.info("received %s, shutting down", signal.Signals(signum).name)
         _notify_systemd("STOPPING=1")
         service.stop()
@@ -105,12 +99,13 @@ def main(argv: list[str] | None = None) -> int:
         if not result.get("ok"):
             log.error("reload failed: %s", result.get("error"))
 
-    signal.signal(signal.SIGTERM, handle_stop)
-    signal.signal(signal.SIGINT, handle_stop)
-    signal.signal(signal.SIGHUP, handle_reload)
-
     try:
         if args.no_dbus:
+            # With a D-Bus service the signals belong to its main loop, which
+            # installs its own handlers; here the loop is ours.
+            signal.signal(signal.SIGTERM, handle_stop)
+            signal.signal(signal.SIGINT, handle_stop)
+            signal.signal(signal.SIGHUP, handle_reload)
             # Nothing registers on the bus in this mode, so announce readiness
             # here instead.
             _notify_systemd("READY=1")

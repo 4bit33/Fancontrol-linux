@@ -22,6 +22,7 @@ CONFIG_DIR="$SYSCONFDIR/fancontrol-linux"
 # Python untouched.
 VENV_DIR="${VENV_DIR:-/usr/lib/fancontrol-linux}"
 ENTRY_POINTS=(fancontrold fanctl fancontrol-gui fancontrol-sim)
+DROPIN_DIR="$UNIT_DIR/fancontrold.service.d"
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -41,6 +42,8 @@ uninstall() {
     systemctl disable --now fancontrold.service 2>/dev/null || true
 
     rm -f "$UNIT_DIR/fancontrold.service"
+    rm -f "$DROPIN_DIR/nvidia.conf"
+    rmdir "$DROPIN_DIR" 2>/dev/null || true
     rm -f "$DBUS_DIR/org.fancontrol.Daemon.conf"
     rm -f "$DESKTOP_DIR/io.github.fancontrol_linux.gui.desktop"
 
@@ -108,6 +111,25 @@ install_all() {
     install -Dm644 "$SOURCE_DIR/data/applications/io.github.fancontrol_linux.gui.desktop" \
         "$DESKTOP_DIR/io.github.fancontrol_linux.gui.desktop"
     install -dm755 "$CONFIG_DIR"
+
+    # NVML cannot initialise under the unit's strict defaults, so a machine
+    # with an NVIDIA card gets a drop-in that relaxes just enough for it.
+    rm -f "$DROPIN_DIR/nvidia.conf"
+    # install_program already put the package in the venv, so this runs the
+    # daemon's own NVML binding rather than guessing from lsmod.
+    if "$VENV_DIR/bin/python" - <<'PY' 2>/dev/null
+import sys
+from fancontrol.hw.nvml import Nvml
+nvml = Nvml()
+sys.exit(0 if nvml.init() and nvml.device_count() else 1)
+PY
+    then
+        info "NVIDIA GPU detected, relaxing the sandbox so NVML can reach it"
+        install -Dm644 "$SOURCE_DIR/data/systemd/fancontrold-nvidia.conf" \
+            "$DROPIN_DIR/nvidia.conf"
+    else
+        info "No NVIDIA GPU found, keeping the strict sandbox"
+    fi
 
     systemctl daemon-reload
     # The bus reads its policy directory on SIGHUP; without this the new rules
