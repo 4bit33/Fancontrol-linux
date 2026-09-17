@@ -541,7 +541,7 @@ def cmd_doctor(client, args) -> int:
             advice = (
                 "The daemon has less access than this shell. Run the bisect to\n"
                 "find out what is taking it away:\n"
-                "    sudo ./tools/nvidia-sandbox-bisect.sh"
+                "    sudo ./tools/nvidia-diagnose.sh"
             )
             if _selinux_enforcing():
                 advice += (
