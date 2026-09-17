@@ -127,6 +127,7 @@ PY
         info "NVIDIA GPU detected, relaxing the sandbox so NVML can reach it"
         install -Dm644 "$SOURCE_DIR/data/systemd/fancontrold-nvidia.conf" \
             "$DROPIN_DIR/nvidia.conf"
+        echo "    $DROPIN_DIR/nvidia.conf"
     else
         info "No NVIDIA GPU found, keeping the strict sandbox"
     fi

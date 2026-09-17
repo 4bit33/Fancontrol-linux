@@ -39,12 +39,10 @@ LockPersonality=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 
-# An empty bounding set drops every capability, root included. Writing a PWM
-# file needs none of them, but the NVIDIA driver checks CAP_SYS_ADMIN on the
-# ioctls that set a fan speed, so dropping everything let the daemon read the
-# GPU's temperature and then refused every attempt to drive its fans. A short
-# positive list says what is actually needed instead.
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+# Writing a PWM file needs no capabilities at all, so a daemon that only drives
+# board fans can run without any. A machine with an NVIDIA GPU gets a drop-in
+# that puts them back, because the driver needs more than this.
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target
