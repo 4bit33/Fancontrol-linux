@@ -449,20 +449,35 @@ def cmd_doctor(client, args) -> int:
 
     # -- daemon -----------------------------------------------------------
     print(bold("\nDaemon"))
-    try:
-        state = subprocess.run(
-            ["systemctl", "is-active", "fancontrold.service"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
-    except Exception:
-        state = "unknown"
-    if state == "active":
+
+    def systemctl(*arguments: str) -> str:
+        try:
+            return subprocess.run(
+                ["systemctl", *arguments],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+        except Exception:
+            return ""
+
+    # is-active says "inactive" both for a stopped unit and for one that does
+    # not exist, so ask whether it is installed before reporting on it.
+    installed = "fancontrold.service" in systemctl(
+        "list-unit-files", "fancontrold.service", "--no-legend"
+    )
+    state = systemctl("is-active", "fancontrold.service")
+
+    if not installed:
+        note("fancontrold.service is not installed yet (sudo ./install.sh)")
+    elif state == "active":
         good("fancontrold.service is running")
-    elif state == "inactive":
-        note("fancontrold.service is installed but not running "
-             "(sudo systemctl start fancontrold)")
+    elif state == "failed":
+        bad(
+            "fancontrold.service failed to start",
+            "journalctl -u fancontrold -n 50 --no-pager",
+        )
     else:
-        note(f"fancontrold.service: {state}")
+        note(f"fancontrold.service is installed but {state or 'not running'} "
+             "(sudo systemctl start fancontrold)")
 
     try:
         DaemonClient().version()
