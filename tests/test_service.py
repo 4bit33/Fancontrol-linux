@@ -285,3 +285,32 @@ def test_the_loop_takes_the_fan_back_after_calibration(service, simulator):
     status = service.tick()
     assert status["controls"][control.id]["paused"] is False
     assert status["controls"][control.id]["managed"] is True
+
+
+def test_doctor_runs_without_a_daemon(registry, simulator, capsys, monkeypatch):
+    """It has to work before anything is installed, which is when it is needed."""
+
+    from fancontrol import cli
+
+    monkeypatch.setenv("FANCONTROL_HWMON_ROOT", str(simulator.root))
+    code = cli.main(["doctor"])
+    output = capsys.readouterr().out
+
+    assert code in (0, 1)
+    assert "hwmon chips" in output
+    assert "nct6798" in output
+    assert "pwm" in output
+
+
+def test_doctor_explains_a_machine_with_no_pwm(tmp_path, capsys, monkeypatch):
+    empty = tmp_path / "hwmon"
+    empty.mkdir()
+    monkeypatch.setenv("FANCONTROL_HWMON_ROOT", str(empty))
+
+    from fancontrol import cli
+
+    assert cli.main(["doctor"]) == 1
+    output = capsys.readouterr().out
+    assert "no PWM outputs found" in output
+    # The advice has to name the actual fix, not just report the symptom.
+    assert "sensors-detect" in output

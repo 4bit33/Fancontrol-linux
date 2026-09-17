@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -309,6 +310,180 @@ def cmd_import(client, args) -> int:
     return 0
 
 
+def cmd_doctor(client, args) -> int:
+    """Check everything that has to be right before fan control can work.
+
+    This is the first thing to run when no fans show up, and its output is what
+    to paste into a bug report.
+    """
+
+    import platform
+    import subprocess
+    from .hw.hwmon import hwmon_root
+
+    ok_count = 0
+    problems: list[str] = []
+
+    def good(text: str) -> None:
+        nonlocal ok_count
+        ok_count += 1
+        print(f"  {green('ok')}    {text}")
+
+    def bad(text: str, advice: str = "") -> None:
+        problems.append(text)
+        print(f"  {red('no')}    {text}")
+        if advice:
+            for line in advice.splitlines():
+                print(f"        {dim(line)}")
+
+    def note(text: str) -> None:
+        print(f"  {dim('--')}    {dim(text)}")
+
+    print(bold("\nSystem"))
+    note(f"{platform.system()} {platform.release()}")
+    try:
+        pretty = dict(
+            line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines()
+            if "=" in line
+        ).get("PRETTY_NAME", "").strip('"')
+        if pretty:
+            note(pretty)
+    except OSError:
+        pass
+
+    # -- hwmon ------------------------------------------------------------
+    print(bold("\nhwmon chips"))
+    root = hwmon_root()
+    chips: list[tuple[str, Path, list[Path]]] = []
+    if not root.exists():
+        bad(f"{root} does not exist", "The kernel has no hwmon support at all, which is unusual.")
+    else:
+        for chip_dir in sorted(root.iterdir()):
+            name_file = chip_dir / "name"
+            try:
+                name = name_file.read_text().strip()
+            except OSError:
+                continue
+            pwms = sorted(p for p in chip_dir.glob("pwm[0-9]*") if p.name[3:].isdigit())
+            chips.append((name, chip_dir, pwms))
+            temps = len(list(chip_dir.glob("temp*_input")))
+            fans = len(list(chip_dir.glob("fan*_input")))
+            detail = f"{name:12} {temps} temperature, {fans} fan, {len(pwms)} pwm"
+            if pwms:
+                good(detail)
+            else:
+                note(detail)
+
+    controllable = [c for c in chips if c[2]]
+    if not controllable:
+        bad(
+            "no PWM outputs found — nothing can be controlled yet",
+            "Almost always a missing super-I/O driver rather than a fault here:\n"
+            "    sudo sensors-detect        # accept the safe defaults\n"
+            "    sudo modprobe <module>     # whichever it names\n"
+            "Gigabyte boards usually need it87; Asus/MSI usually nct6775.",
+        )
+
+    # -- writability ------------------------------------------------------
+    if controllable:
+        print(bold("\nWrite access"))
+        if os.geteuid() != 0:
+            note("not running as root, so this only reports what root would see")
+        for name, chip_dir, pwms in controllable:
+            enable = chip_dir / f"{pwms[0].name}_enable"
+            if not enable.exists():
+                note(f"{name}: no {enable.name}; the driver may not allow manual control")
+            elif os.geteuid() == 0 and not os.access(pwms[0], os.W_OK):
+                bad(f"{name}: {pwms[0]} is not writable even as root")
+            else:
+                good(f"{name}: {pwms[0].name} looks writable")
+
+    # -- kernel modules ---------------------------------------------------
+    print(bold("\nSensor modules"))
+    try:
+        loaded = Path("/proc/modules").read_text()
+    except OSError:
+        loaded = ""
+    known = ("it87", "nct6775", "nct6683", "coretemp", "k10temp", "zenpower",
+             "amdgpu", "nvme", "drivetemp", "asus_wmi_sensors")
+    found = [m for m in known if any(line.startswith(m + " ") for line in loaded.splitlines())]
+    if found:
+        good("loaded: " + ", ".join(found))
+    else:
+        note("none of the usual sensor modules are loaded")
+
+    cmdline = ""
+    try:
+        cmdline = Path("/proc/cmdline").read_text()
+    except OSError:
+        pass
+    if "acpi_enforce_resources" in cmdline:
+        good("acpi_enforce_resources is set on the kernel command line")
+    elif not controllable:
+        note(
+            "acpi_enforce_resources=lax is often needed on Gigabyte boards, where\n"
+            "        ACPI holds the super-I/O ports and it87 refuses to load"
+        )
+
+    # -- NVIDIA -----------------------------------------------------------
+    print(bold("\nNVIDIA"))
+    from .hw.nvml import Nvml
+
+    nvml = Nvml()
+    if not nvml.init():
+        note("libnvidia-ml not present, or the driver is not loaded — GPU control off")
+    else:
+        try:
+            count = nvml.device_count()
+            good(f"NVML works, {count} GPU(s)")
+            for index in range(count):
+                handle = nvml.device_handle(index)
+                fans = nvml.num_fans(handle)
+                good(f"  {nvml.device_name(handle)}: {fans} controllable fan(s)")
+                if os.geteuid() != 0:
+                    note("  setting a GPU fan speed needs root; run the daemon for that")
+        except Exception as exc:
+            bad(f"NVML failed: {exc}")
+        finally:
+            nvml.shutdown()
+
+    # -- daemon -----------------------------------------------------------
+    print(bold("\nDaemon"))
+    try:
+        state = subprocess.run(
+            ["systemctl", "is-active", "fancontrold.service"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except Exception:
+        state = "unknown"
+    if state == "active":
+        good("fancontrold.service is running")
+    elif state == "inactive":
+        note("fancontrold.service is installed but not running "
+             "(sudo systemctl start fancontrold)")
+    else:
+        note(f"fancontrold.service: {state}")
+
+    try:
+        DaemonClient().version()
+        good("the daemon answers on D-Bus")
+    except DaemonError as exc:
+        note(f"cannot reach the daemon over D-Bus: {exc}")
+
+    for path in (Path("/etc/fancontrol-linux/config.json"),):
+        if path.exists():
+            good(f"configuration at {path}")
+        else:
+            note(f"no configuration at {path} yet")
+
+    print()
+    if problems:
+        print(red(f"{len(problems)} thing(s) need attention, {ok_count} fine"))
+        return 1
+    print(green(f"all {ok_count} checks fine"))
+    return 0
+
+
 def cmd_config(client, args) -> int:
     config = client.config()
     if args.output:
@@ -391,6 +566,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser(
+        "doctor",
+        help="check whether fan control can work on this machine at all",
+    ).set_defaults(func=cmd_doctor, needs_client=False)
+
     sub.add_parser("status", help="show what every fan is doing right now").set_defaults(
         func=cmd_status)
     sub.add_parser("list", help="list the sensors and controls that were found").set_defaults(
@@ -440,6 +620,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if not getattr(args, "needs_client", True):
+        # doctor runs before anything is installed or working, which is the
+        # whole point of it.
+        return args.func(None, args)
     try:
         client = connect(args)
     except DaemonError as exc:

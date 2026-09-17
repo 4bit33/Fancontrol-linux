@@ -16,6 +16,13 @@ DBUS_DIR="$DATADIR/dbus-1/system.d"
 DESKTOP_DIR="$DATADIR/applications"
 CONFIG_DIR="$SYSCONFDIR/fancontrol-linux"
 
+# Fedora marks its system Python as externally managed, so pip refuses to
+# install into it. A virtual environment built with --system-site-packages
+# keeps the dnf-installed PySide6 and dasbus visible while leaving the system
+# Python untouched.
+VENV_DIR="${VENV_DIR:-/usr/lib/fancontrol-linux}"
+ENTRY_POINTS=(fancontrold fanctl fancontrol-gui fancontrol-sim)
+
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -37,8 +44,11 @@ uninstall() {
     rm -f "$DBUS_DIR/org.fancontrol.Daemon.conf"
     rm -f "$DESKTOP_DIR/io.github.fancontrol_linux.gui.desktop"
 
-    info "Removing the Python package"
-    python3 -m pip uninstall -y fancontrol-linux >/dev/null 2>&1 || true
+    info "Removing the program"
+    for entry in "${ENTRY_POINTS[@]}"; do
+        rm -f "$PREFIX/bin/$entry"
+    done
+    rm -rf "$VENV_DIR"
 
     systemctl daemon-reload
     green "Removed. Your configuration is still at $CONFIG_DIR — delete it yourself if you want it gone."
@@ -48,23 +58,47 @@ check_dependencies() {
     local missing=()
     python3 -c 'import dasbus' 2>/dev/null || missing+=("python3-dasbus")
     python3 -c 'import PySide6' 2>/dev/null || missing+=("python3-pyside6")
+    python3 -c 'import venv' 2>/dev/null || missing+=("python3-libs")
+    command -v sensors-detect >/dev/null || missing+=("lm_sensors")
 
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        info "Installing missing dependencies: ${missing[*]}"
-        if command -v dnf >/dev/null; then
-            dnf install -y "${missing[@]}"
-        else
-            red "Install these yourself, then run this script again: ${missing[*]}"
-            exit 1
-        fi
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        return
     fi
+
+    info "Installing missing dependencies: ${missing[*]}"
+    if ! command -v dnf >/dev/null; then
+        red "Install these yourself, then run this script again: ${missing[*]}"
+        exit 1
+    fi
+    if ! dnf install -y "${missing[@]}"; then
+        red "Could not install: ${missing[*]}"
+        echo
+        echo "If dnf does not know python3-pyside6, the window needs it from pip"
+        echo "instead; the daemon itself will still work without it."
+        exit 1
+    fi
+}
+
+install_program() {
+    info "Building the program environment in $VENV_DIR"
+    # --system-site-packages so the dnf builds of PySide6 and dasbus are used
+    # rather than pulled in again from PyPI.
+    python3 -m venv --system-site-packages --upgrade-deps "$VENV_DIR" >/dev/null
+
+    if ! "$VENV_DIR/bin/pip" install --upgrade "$SOURCE_DIR"; then
+        red "Installation failed."
+        exit 1
+    fi
+
+    for entry in "${ENTRY_POINTS[@]}"; do
+        ln -sf "$VENV_DIR/bin/$entry" "$PREFIX/bin/$entry"
+    done
 }
 
 install_all() {
     check_dependencies
 
-    info "Installing the Python package"
-    python3 -m pip install --prefix="$PREFIX" --upgrade "$SOURCE_DIR"
+    install_program
 
     info "Installing the system files"
     install -Dm644 "$SOURCE_DIR/data/systemd/fancontrold.service" \
