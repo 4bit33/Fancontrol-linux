@@ -310,6 +310,13 @@ def cmd_import(client, args) -> int:
     return 0
 
 
+def _selinux_enforcing() -> bool:
+    try:
+        return Path("/sys/fs/selinux/enforce").read_text().strip() == "1"
+    except OSError:
+        return False
+
+
 def cmd_doctor(client, args) -> int:
     """Check everything that has to be right before fan control can work.
 
@@ -417,6 +424,8 @@ def cmd_doctor(client, args) -> int:
         cmdline = Path("/proc/cmdline").read_text()
     except OSError:
         pass
+    if _selinux_enforcing():
+        note("SELinux is enforcing; a denial shows up as a permission error")
     if "acpi_enforce_resources" in cmdline:
         good("acpi_enforce_resources is set on the kernel command line")
     elif not controllable:
@@ -503,14 +512,21 @@ def cmd_doctor(client, args) -> int:
                 "journalctl -u fancontrold -n 50 --no-pager",
             )
         if gpu_count and "nvidia" not in backends:
+            advice = (
+                "The daemon has less access than this shell. Run the bisect to\n"
+                "find out what is taking it away:\n"
+                "    sudo ./tools/nvidia-sandbox-bisect.sh"
+            )
+            if _selinux_enforcing():
+                advice += (
+                    "\n\nSELinux is enforcing, and a denial on the driver's device\n"
+                    "nodes looks exactly like this from inside the process:\n"
+                    "    sudo ausearch -m avc -ts recent | grep -i nvidia"
+                )
             bad(
                 f"NVML works here but the daemon sees no NVIDIA fans "
                 f"({gpu_count} GPU(s) are present)",
-                "The daemon runs inside systemd's sandbox, so it can have less\n"
-                "access than this shell. Find out which it is:\n"
-                "    journalctl -u fancontrold -n 50 --no-pager | grep -i nvidia\n"
-                "    sudo systemctl stop fancontrold && sudo fancontrold --no-dbus -v\n"
-                "If the GPU appears when run by hand, it is the unit's hardening.",
+                advice,
             )
     except DaemonError as exc:
         note(f"cannot reach the daemon over D-Bus: {exc}")
