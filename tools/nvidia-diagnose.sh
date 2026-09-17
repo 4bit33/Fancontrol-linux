@@ -170,6 +170,22 @@ echo "Under all of them together"
 run_case "combined" full "${UNIT_SETTINGS[@]}"
 COMBINED=$?
 
+# Once the empty capability set is implicated, find out which capability the
+# driver actually wants, rather than settling for "all of them".
+CAPABILITY=""
+if printf '%s\n' "${CULPRITS[@]}" | grep -qx "CapabilityBoundingSet="; then
+    echo
+    echo "Capabilities, one at a time, since dropping them all is what broke it"
+    for cap in CAP_SYS_ADMIN CAP_SYS_RAWIO CAP_DAC_OVERRIDE CAP_MKNOD \
+               CAP_SYS_MODULE CAP_IPC_LOCK CAP_SYS_NICE CAP_SYS_RESOURCE \
+               CAP_SYS_PTRACE CAP_SYS_BOOT; do
+        if run_case "only $cap" full "CapabilityBoundingSet=$cap"; then
+            CAPABILITY="$cap"
+            break
+        fi
+    done
+fi
+
 echo
 echo "What the installed unit actually resolves to"
 systemctl show fancontrold.service \
@@ -178,7 +194,13 @@ systemctl show fancontrold.service \
     2>/dev/null | sed 's/^/  /'
 
 echo
-if [[ ${#CULPRITS[@]} -gt 0 ]]; then
+if [[ -n "$CAPABILITY" ]]; then
+    echo "Dropping every capability is what stops the daemon driving the GPU,"
+    echo "and $CAPABILITY on its own is enough to put it right. The drop-in can"
+    echo "be narrowed to exactly that:"
+    echo
+    echo "    CapabilityBoundingSet=$CAPABILITY"
+elif [[ ${#CULPRITS[@]} -gt 0 ]]; then
     echo "These stop the daemon driving the GPU:"
     printf '    %s\n' "${CULPRITS[@]}"
     echo
