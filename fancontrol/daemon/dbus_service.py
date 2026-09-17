@@ -113,7 +113,12 @@ class FanControlDBusInterface:
         return _dumps(self._service.set_control_enabled(bool(enabled)))
 
     def Calibrate(self, control_id: Str) -> Str:
-        """Measure a fan's start and stop points. Takes about a minute."""
+        """Start measuring a fan's start and stop points.
+
+        Returns as soon as it has started; progress and the result appear in
+        the status under ``calibration``. Running it inside the call blocked
+        the bus for the minute it takes.
+        """
         return _dumps(self._service.calibrate(control_id))
 
     # -- import -------------------------------------------------------

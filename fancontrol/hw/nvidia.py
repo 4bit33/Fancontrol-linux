@@ -17,7 +17,7 @@ from ctypes import c_void_p
 from dataclasses import dataclass, field
 
 from .base import DeviceInfo, FanSensor, PwmOutput, TempSensor, sanitize
-from .nvml import Nvml, NvmlError
+from .nvml import NVML_FAN_POLICY_MANUAL, PERMANENT_SET_FAILURES, Nvml, NvmlError
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,10 @@ class NvidiaPwmOutput(PwmOutput):
     nvml: Nvml = field(default_factory=Nvml)
     handle: c_void_p = field(default_factory=c_void_p)
     fan_index: int = 0
+    #: Cleared the first time the driver refuses a speed for a reason that will
+    #: not change, so the loop stops asking every second.
     writable: bool = True
+    refusal: str = ""
     _acquired: bool = False
 
     @property
@@ -70,8 +73,16 @@ class NvidiaPwmOutput(PwmOutput):
         self._acquired = True
 
     def acquire(self) -> None:
-        # NVML has no separate "take control" call: writing a speed switches the
-        # fan to manual, and nvmlDeviceSetDefaultFanSpeed_v2 gives it back.
+        # NVML has no separate "take control" call: writing a speed switches
+        # the fan to manual, and nvmlDeviceSetDefaultFanSpeed_v2 gives it back.
+        # Some drivers want the policy set first; older ones have no such call,
+        # so a failure here is not worth reporting.
+        try:
+            self.nvml.set_fan_control_policy(
+                self.handle, self.fan_index, NVML_FAN_POLICY_MANUAL
+            )
+        except NvmlError as exc:
+            log.debug("%s: fan control policy not set: %s", self.id, exc)
         self._acquired = True
 
     def release(self) -> None:
@@ -84,12 +95,34 @@ class NvidiaPwmOutput(PwmOutput):
         self._acquired = False
 
     def set_percent(self, percent: float) -> None:
+        if not self.writable:
+            raise OSError(self.refusal)
+        if not self._acquired:
+            self.acquire()
+
         value = int(round(max(0.0, min(100.0, percent))))
         try:
             self.nvml.set_fan_percent(self.handle, self.fan_index, value)
         except NvmlError as exc:
+            if exc.code in PERMANENT_SET_FAILURES:
+                # Asking again every second would only repeat the same refusal,
+                # so stop, and say it once in terms that suggest what it means.
+                self.writable = False
+                self.refusal = (
+                    f"the driver will not let this program set the speed of "
+                    f"{self.name}: {exc}"
+                )
+                log.warning("%s: %s", self.id, self.refusal)
+                raise OSError(self.refusal) from exc
             raise OSError(str(exc)) from exc
         self._acquired = True
+
+    def to_dict(self) -> dict:
+        data = super().to_dict()
+        data["writable"] = self.writable
+        if self.refusal:
+            data["refusal"] = self.refusal
+        return data
 
 
 class NvidiaBackend:

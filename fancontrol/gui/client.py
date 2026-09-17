@@ -98,6 +98,9 @@ class DBusProxy(BaseProxy):
             raise ProxyError("cannot connect to the D-Bus daemon")
 
         self._iface = QDBusInterface(BUS_NAME, OBJECT_PATH, INTERFACE, self._bus, self)
+        # Importing a configuration and rescanning the hardware both take
+        # longer than Qt's 25 second default.
+        self._iface.setTimeout(120_000)
         if not self._iface.isValid():
             raise ProxyError(
                 "the fan control daemon is not running.\n\n"

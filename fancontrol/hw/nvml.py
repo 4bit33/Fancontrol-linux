@@ -20,16 +20,60 @@ NVML_ERROR_INVALID_ARGUMENT = 2
 NVML_ERROR_NOT_SUPPORTED = 3
 NVML_ERROR_NO_PERMISSION = 4
 NVML_ERROR_NOT_FOUND = 6
+NVML_ERROR_OPERATING_SYSTEM = 17
+NVML_ERROR_ARGUMENT_VERSION_MISMATCH = 25
+NVML_ERROR_DEPRECATED = 26
 
 NVML_TEMPERATURE_GPU = 0
 
+#: Fan control policies for nvmlDeviceSetFanControlPolicy.
+NVML_FAN_POLICY_TEMPERATURE_CONTINUOUS_SW = 0
+NVML_FAN_POLICY_MANUAL = 1
+
+#: The whole nvmlReturn_t table, so a failure never has to be reported as a
+#: bare number. The wording is what the header says, in plainer words.
 _ERROR_NAMES = {
-    NVML_ERROR_UNINITIALIZED: "NVML was not initialised",
-    NVML_ERROR_INVALID_ARGUMENT: "invalid argument",
-    NVML_ERROR_NOT_SUPPORTED: "not supported by this GPU or driver",
-    NVML_ERROR_NO_PERMISSION: "no permission (run as root)",
-    NVML_ERROR_NOT_FOUND: "not found",
+    1: "NVML was not initialised",
+    2: "invalid argument",
+    3: "not supported by this GPU or driver",
+    4: "no permission (run as root)",
+    5: "NVML was already initialised",
+    6: "not found",
+    7: "the buffer was too small",
+    8: "the GPU has insufficient power",
+    9: "the NVIDIA driver is not loaded",
+    10: "timed out",
+    11: "an interrupt problem on the GPU",
+    12: "a required NVML library was not found",
+    13: "a required NVML function was not found",
+    14: "the GPU's inforom is corrupted",
+    15: "the GPU has fallen off the bus",
+    16: "the GPU needs a reset",
+    17: "blocked by the operating system: the driver will not let this "
+        "process control the GPU",
+    18: "the driver and NVML versions do not match",
+    19: "the GPU is in use by another process",
+    20: "out of memory",
+    21: "no data",
+    22: "ECC is not supported for this vGPU",
+    23: "insufficient resources",
+    24: "that frequency is not supported",
+    25: "the struct version this NVML expects does not match the driver's",
+    26: "this function is deprecated in the installed driver",
+    27: "the GPU is not ready",
+    999: "unknown error",
 }
+
+
+#: Failures that mean "asking again will not help": the driver has decided this
+#: process may not drive this fan.
+PERMANENT_SET_FAILURES = (
+    NVML_ERROR_NOT_SUPPORTED,
+    NVML_ERROR_NO_PERMISSION,
+    NVML_ERROR_OPERATING_SYSTEM,
+    NVML_ERROR_ARGUMENT_VERSION_MISMATCH,
+    NVML_ERROR_DEPRECATED,
+)
 
 _LIB_NAMES = ("libnvidia-ml.so.1", "libnvidia-ml.so")
 
@@ -175,3 +219,23 @@ class Nvml:
             self._fn("nvmlDeviceSetDefaultFanSpeed_v2")(handle, c_uint(fan)),
             "nvmlDeviceSetDefaultFanSpeed_v2",
         )
+
+    def set_fan_control_policy(self, handle: c_void_p, fan: int, policy: int) -> None:
+        """Switch a fan between the driver's own curve and manual control.
+
+        Some drivers want this before they accept a speed, and older ones do
+        not have the call at all, so callers treat a failure as advisory.
+        """
+
+        self._check(
+            self._fn("nvmlDeviceSetFanControlPolicy")(handle, c_uint(fan), c_uint(policy)),
+            "nvmlDeviceSetFanControlPolicy",
+        )
+
+    def driver_version(self) -> str:
+        buf = ctypes.create_string_buffer(80)
+        self._check(
+            self._fn("nvmlSystemGetDriverVersion")(buf, c_uint(80)),
+            "nvmlSystemGetDriverVersion",
+        )
+        return buf.value.decode("utf-8", "replace")

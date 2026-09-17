@@ -208,7 +208,7 @@ def test_calibration_measures_where_the_fan_stops_and_starts(service, simulator)
     service.engine.set_config(service.config)
     _drive_simulation_on_read(service, simulator, control)
 
-    result = service.calibrate(control.id)
+    result = service.calibrate(control.id, wait=True)
 
     assert result["ok"] is True
     # The simulated fan needs 12% to keep turning, so calibration has to find
@@ -225,7 +225,7 @@ def test_calibration_is_recorded_on_the_control(service, simulator):
     service.engine.set_config(service.config)
     _drive_simulation_on_read(service, simulator, control)
 
-    service.calibrate(control.id)
+    service.calibrate(control.id, wait=True)
 
     assert control.calibration
     assert all(len(sample) == 2 for sample in control.calibration)
@@ -236,7 +236,7 @@ def test_calibration_is_recorded_on_the_control(service, simulator):
 def test_calibration_needs_a_tachometer(service):
     control = service.config.controls[0]
     control.fan_sensor_id = ""
-    result = service.calibrate(control.id)
+    result = service.calibrate(control.id, wait=True)
     assert result["ok"] is False
     assert "tachometer" in result["error"]
 
@@ -266,7 +266,7 @@ def test_calibration_is_not_fought_by_the_control_loop(service, simulator):
     service.engine.set_config(service.config)
     _drive_simulation_on_read(service, simulator, control, also_tick=True)
 
-    result = service.calibrate(control.id)
+    result = service.calibrate(control.id, wait=True)
 
     assert result["ok"] is True
     assert result["stop_percent"] is not None
@@ -279,7 +279,7 @@ def test_the_loop_takes_the_fan_back_after_calibration(service, simulator):
     service.engine.set_config(service.config)
     service.calibration_settle = 0.01
 
-    service.calibrate(control.id)
+    service.calibrate(control.id, wait=True)
     assert control.id not in service.engine.paused
 
     status = service.tick()
@@ -314,3 +314,53 @@ def test_doctor_explains_a_machine_with_no_pwm(tmp_path, capsys, monkeypatch):
     assert "no PWM outputs found" in output
     # The advice has to name the actual fix, not just report the symptom.
     assert "sensors-detect" in output
+
+
+def test_calibration_returns_at_once_and_reports_progress(service, simulator):
+    """Blocking the bus for a minute timed the caller out and froze the window."""
+
+    control = service.config.controls[0]
+    control.enabled = True
+    service.engine.set_config(service.config)
+    service.calibration_settle = 0.02
+    _drive_simulation_on_read(service, simulator, control)
+    service.calibration_settle = 0.02
+
+    started = time.monotonic()
+    result = service.calibrate(control.id)
+    assert result["ok"] is True and result["started"] is True
+    assert time.monotonic() - started < 1.0, "calibrate() blocked its caller"
+
+    # The control is paused for the duration and the status says what is going on.
+    assert control.id in service.engine.paused
+    assert service.tick()["calibration"][control.id]["state"] == "running"
+
+    for _ in range(600):
+        if service.calibration[control.id].get("state") != "running":
+            break
+        time.sleep(0.05)
+    report = service.calibration[control.id]
+    assert report["state"] == "finished"
+    assert report["ok"] is True
+    assert control.id not in service.engine.paused
+
+
+def test_two_calibrations_at_once_are_refused(service, simulator):
+    control = service.config.controls[0]
+    control.enabled = True
+    service.engine.set_config(service.config)
+    _drive_simulation_on_read(service, simulator, control)
+
+    assert service.calibrate(control.id)["ok"] is True
+    second = service.calibrate(control.id)
+    assert second["ok"] is False
+    assert "already running" in second["error"]
+
+
+def test_a_control_with_no_tachometer_is_refused_before_starting(service):
+    control = service.config.controls[0]
+    control.fan_sensor_id = ""
+    result = service.calibrate(control.id)
+    assert result["ok"] is False
+    assert "tachometer" in result["error"]
+    assert control.id not in service.engine.paused

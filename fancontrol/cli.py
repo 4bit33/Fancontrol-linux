@@ -214,6 +214,32 @@ def cmd_calibrate(client, args) -> int:
     if not result.get("ok"):
         print(red(result.get("error", "calibration failed")))
         return 1
+
+    # The daemon runs it in the background, so follow the status until it ends.
+    if result.get("started"):
+        import time as _time
+
+        last = -1.0
+        for _ in range(600):
+            _time.sleep(0.5)
+            report = (client.status().get("calibration") or {}).get(control_id, {})
+            if report.get("state") == "running":
+                percent = report.get("percent", 0.0)
+                if percent != last and sys.stdout.isatty():
+                    print(dim(f"  at {percent:3.0f}% ..."), end="\r", flush=True)
+                    last = percent
+                continue
+            if report:
+                result = report
+                break
+        else:
+            print(red("the calibration did not finish in time"))
+            return 1
+        if sys.stdout.isatty():
+            print(" " * 40, end="\r")
+    if not result.get("ok"):
+        print(red(result.get("error", "calibration failed")))
+        return 1
     print(green(f"\n  {args.control}"))
     stop = result.get("stop_percent")
     start = result.get("start_percent")

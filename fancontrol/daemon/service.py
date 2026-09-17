@@ -52,6 +52,7 @@ class FanControlService:
         #: Seconds to wait after each PWM step during calibration, so the fan
         #: has time to reach its new speed before the tachometer is read.
         self.calibration_settle = 1.5
+        self._calibration_thread: threading.Thread | None = None
 
         #: Outputs recorded as held, so the file is only rewritten on a change.
         self._held: dict[str, Any] = {}
@@ -164,6 +165,7 @@ class FanControlService:
                 self.start()
             assert self.engine is not None
             status = self.engine.tick().to_dict()
+            status["calibration"] = {k: dict(v) for k, v in self.calibration.items()}
             self._remember_outputs()
             return status
 
@@ -193,7 +195,9 @@ class FanControlService:
         with self._lock:
             if self.engine is None:
                 return {}
-            return self.engine.status.to_dict()
+            status = self.engine.status.to_dict()
+            status["calibration"] = {k: dict(v) for k, v in self.calibration.items()}
+            return status
 
     def get_config(self) -> dict[str, Any]:
         with self._lock:
@@ -387,7 +391,67 @@ class FanControlService:
     # ------------------------------------------------------------------
     # calibration
 
-    def calibrate(self, control_id: str) -> dict[str, Any]:
+    def calibrate(self, control_id: str, wait: bool = False) -> dict[str, Any]:
+        """Start measuring how a fan actually behaves, and return at once.
+
+        Stepping a fan up and down takes about a minute. Doing that inside the
+        D-Bus call blocked the bus for the whole time, so the call timed out,
+        the caller got a raw error and no status update reached the window
+        until it finished. It now runs on its own thread and reports progress
+        through the status; ``wait`` is for the tests.
+        """
+
+        with self._lock:
+            running = self._calibration_thread
+            if running is not None and running.is_alive():
+                return fail("a calibration is already running")
+
+            problem = self._calibration_problem(control_id)
+            if problem:
+                return fail(problem)
+
+            self.calibration[control_id] = {
+                "control_id": control_id,
+                "state": "running",
+                "percent": 100.0,
+                "samples": [],
+            }
+            if self.engine is not None:
+                # The control loop has to stop writing to this output for the
+                # duration, otherwise it overwrites every step as soon as it is
+                # set.
+                self.engine.pause(control_id)
+
+            thread = threading.Thread(
+                target=self._run_calibration, args=(control_id,),
+                name=f"calibrate-{control_id}", daemon=True,
+            )
+            self._calibration_thread = thread
+        thread.start()
+
+        if wait:
+            thread.join(timeout=300)
+            return self.calibration.get(control_id, fail("calibration produced no result"))
+        return ok(started=True, control_id=control_id)
+
+    def _calibration_problem(self, control_id: str) -> str:
+        """Why this control cannot be calibrated, or an empty string."""
+
+        control = self.config.control_by_id(control_id)
+        if control is None:
+            return f"no control with id {control_id!r}"
+        if not control.fan_sensor_id:
+            return (
+                f"{control.name} has no fan tachometer assigned, so its speed "
+                "cannot be measured"
+            )
+        if control.output_id not in self.registry.controls:
+            return "the hardware for this control is not available"
+        if control.fan_sensor_id not in self.registry.fans:
+            return "the tachometer for this control is not available"
+        return ""
+
+    def _run_calibration(self, control_id: str) -> dict[str, Any]:
         """Find out how a fan actually behaves: where it starts and stops.
 
         The control is stepped from full speed down to zero and back up while
@@ -397,22 +461,9 @@ class FanControlService:
 
         with self._lock:
             control = self.config.control_by_id(control_id)
-            if control is None:
-                return fail(f"no control with id {control_id!r}")
-            if not control.fan_sensor_id:
-                return fail(
-                    f"{control.name} has no fan tachometer assigned, so its speed "
-                    "cannot be measured"
-                )
-            output = self.registry.controls.get(control.output_id)
-            fan = self.registry.fans.get(control.fan_sensor_id)
-            if output is None or fan is None:
-                return fail("the hardware for this control is not available")
-
-        # The control loop has to stop writing to this output for the duration,
-        # otherwise it overwrites every step as soon as it is set.
-        if self.engine is not None:
-            self.engine.pause(control_id)
+            assert control is not None
+            output = self.registry.controls[control.output_id]
+            fan = self.registry.fans[control.fan_sensor_id]
 
         samples: list[dict[str, float]] = []
         stop_percent: float | None = None
@@ -426,6 +477,7 @@ class FanControlService:
                 time.sleep(self.calibration_settle)
                 rpm = fan.read() or 0.0
                 samples.append({"percent": float(percent), "rpm": rpm})
+                self.calibration[control_id].update(percent=float(percent), samples=list(samples))
                 if rpm <= 0 and stop_percent is None:
                     stop_percent = float(percent)
                     break
@@ -436,11 +488,14 @@ class FanControlService:
                 output.set_percent(float(percent))
                 time.sleep(self.calibration_settle)
                 rpm = fan.read() or 0.0
+                self.calibration[control_id].update(percent=float(percent))
                 if rpm > 0:
                     start_percent = float(percent)
                     break
         except OSError as exc:
-            return fail(f"calibration failed: {exc}")
+            outcome = fail(f"calibration failed: {exc}", control_id=control_id, state="failed")
+            self.calibration[control_id] = outcome
+            return outcome
         finally:
             with self._lock:
                 if self.engine is not None:
@@ -456,6 +511,8 @@ class FanControlService:
                 )
 
         result = {
+            "ok": True,
+            "state": "finished",
             "control_id": control_id,
             "samples": samples,
             "stop_percent": stop_percent,
@@ -467,4 +524,5 @@ class FanControlService:
             "suggested_start_percent": (start_percent + 5.0) if start_percent is not None else None,
         }
         self.calibration[control_id] = result
-        return ok(**result)
+        log.info("calibration of %s finished", control_id)
+        return result

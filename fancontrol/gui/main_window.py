@@ -122,6 +122,8 @@ class MainWindow(QMainWindow):
         self.cards: dict[str, ControlCard] = {}
         self.latest_status: dict = {}
         self._overrides: dict[str, float] = {}
+        #: Controls whose calibration we are waiting on.
+        self._calibrating: set[str] = set()
 
         self.setWindowTitle("Fan Control")
         self.resize(1180, 720)
@@ -375,6 +377,7 @@ class MainWindow(QMainWindow):
                 card.update_status(entry)
 
         self.sensors.update_status(status)
+        self._follow_calibrations(status)
 
         for row in range(self.curve_list.count()):
             item = self.curve_list.item(row)
@@ -396,6 +399,24 @@ class MainWindow(QMainWindow):
         messages = status.get("messages", [])
         if messages:
             self.statusBar().showMessage(messages[0], 4000)
+
+    def _follow_calibrations(self, status: dict) -> None:
+        """Show progress while a calibration runs, and react when it ends."""
+
+        reports = status.get("calibration", {})
+        for control_id in list(self._calibrating):
+            report = reports.get(control_id)
+            if not report:
+                continue
+            if report.get("state") == "running":
+                control = self.config.control_by_id(control_id)
+                name = control.name if control else control_id
+                self.statusBar().showMessage(
+                    f"Calibrating {name} — now at {report.get('percent', 0):.0f}%"
+                )
+                continue
+            self._calibrating.discard(control_id)
+            self._on_calibration_finished(control_id, report)
 
     def _update_preview_reading(self) -> None:
         item = self.curve_list.currentItem()
@@ -569,14 +590,31 @@ class MainWindow(QMainWindow):
         ) != QMessageBox.Yes:
             return
 
-        QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             result = self.proxy.calibrate(control_id)
-        finally:
-            QApplication.restoreOverrideCursor()
+        except ProxyError as exc:
+            QMessageBox.warning(self, "Calibrate", str(exc))
+            return
 
         if not result.get("ok"):
             QMessageBox.warning(self, "Calibrate", result.get("error", "calibration failed"))
+            return
+
+        # It runs in the daemon and reports through the status, so the window
+        # stays live while the fan is stepped up and down.
+        self._calibrating.add(control_id)
+        self.statusBar().showMessage(f"Calibrating {control.name}…")
+
+    def _on_calibration_finished(self, control_id: str, result: dict) -> None:
+        control = self.config.control_by_id(control_id)
+        if control is None:
+            return
+        self.statusBar().clearMessage()
+
+        if not result.get("ok"):
+            QMessageBox.warning(
+                self, "Calibrate", result.get("error", "calibration failed")
+            )
             return
 
         minimum = result.get("suggested_min_percent")
@@ -606,6 +644,9 @@ class MainWindow(QMainWindow):
                 control.min_percent = float(minimum)
             if start is not None:
                 control.start_percent = float(start)
+            if result.get("suggested_stop_percent") is not None:
+                control.stop_percent = float(result["suggested_stop_percent"])
+            control.calibration = [[s["percent"], s["rpm"]] for s in result.get("samples", [])]
             self._push_config()
             self.refresh_all()
 
