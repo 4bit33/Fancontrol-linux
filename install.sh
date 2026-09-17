@@ -115,10 +115,22 @@ install_all() {
     systemctl reload dbus.service 2>/dev/null || true
 
     if [[ "${1:-}" != "--no-enable" ]]; then
-        info "Enabling the daemon"
-        systemctl enable --now fancontrold.service
+        if systemctl is-active --quiet fancontrold.service; then
+            # enable --now leaves an already-running daemon alone, so a
+            # reinstall would keep serving the code it started with.
+            info "Restarting the daemon onto the new version"
+            systemctl restart fancontrold.service
+        else
+            info "Enabling the daemon"
+            systemctl enable --now fancontrold.service
+        fi
         sleep 2
-        systemctl --no-pager --lines=0 status fancontrold.service || true
+        if systemctl is-active --quiet fancontrold.service; then
+            green "fancontrold is running"
+        else
+            red "fancontrold did not start. What it said:"
+            journalctl -u fancontrold.service -n 25 --no-pager || true
+        fi
     fi
 
     green ""
