@@ -113,6 +113,21 @@ show_fans() {
 echo
 echo "Chip $CHIP at $HWMON"
 echo "Kernel module: $(basename "$(readlink -f "$HWMON/device/driver" 2>/dev/null)" 2>/dev/null || echo unknown)"
+
+# Which chip the driver thinks this is decides the register map it uses, so a
+# misidentification shows up as writes that land somewhere unhelpful.
+for module in it87 nct6775 nct6683; do
+    params="/sys/module/$module/parameters"
+    [[ -d "$params" ]] || continue
+    echo "  $module parameters:"
+    for param in "$params"/*; do
+        printf '    %-24s %s\n' "$(basename "$param")" "$(cat "$param" 2>/dev/null || echo '?')"
+    done
+done
+if command -v dmesg >/dev/null; then
+    detection="$(dmesg 2>/dev/null | grep -iE 'it87|nct67' | tail -6)"
+    [[ -n "$detection" ]] && { echo "  what the driver said when it loaded:"; echo "$detection" | sed 's/^/    /'; }
+fi
 echo
 
 # Two chips reporting the same readings is a sign they are the same source,
@@ -127,6 +142,8 @@ echo
 echo "All fan readings right now:  $(show_fans)"
 echo
 
+STEPS="${STEPS:-0 51 102 153 204 255}"
+
 for pwm in "${PWMS[@]}"; do
     channel="$(basename "$pwm")"
     enable_file="${pwm}_enable"
@@ -135,41 +152,53 @@ for pwm in "${PWMS[@]}"; do
     echo "── $channel ──"
     printf '  before      : pwm=%s' "$(cat "$pwm" 2>/dev/null || echo ?)"
     [[ -e "$enable_file" ]] && printf ' enable=%s' "$(cat "$enable_file")"
-    [[ -e "$mode_file" ]] && printf ' mode=%s' "$(cat "$mode_file")"
+    [[ -e "$mode_file" ]] && printf ' mode=%s (0=DC 1=PWM)' "$(cat "$mode_file")"
     printf '\n'
 
+    manual=no
     if [[ -e "$enable_file" ]]; then
-        if echo 1 > "$enable_file" 2>/dev/null; then
-            back="$(cat "$enable_file")"
-            if [[ "$back" == "1" ]]; then
-                echo "  manual mode : accepted"
-            else
-                echo "  manual mode : WROTE 1, CHIP SAYS $back  <- the chip refused"
-            fi
+        if echo 1 > "$enable_file" 2>/dev/null && [[ "$(cat "$enable_file")" == "1" ]]; then
+            manual=yes
+            echo "  manual mode : accepted"
         else
-            echo "  manual mode : the write itself failed"
+            echo "  manual mode : REFUSED - wrote 1, chip says $(cat "$enable_file" 2>/dev/null)"
         fi
     else
-        echo "  manual mode : no ${channel}_enable, cannot ask for manual control"
+        echo "  manual mode : no ${channel}_enable"
     fi
 
-    for value in "$HIGH" "$LOW"; do
+    if [[ "$manual" == no ]]; then
+        echo "  skipping the sweep: without manual mode the chip is still in charge"
+        echo
+        continue
+    fi
+
+    # Sweep upwards, so a fan that had to be restarted is already turning by
+    # the time the higher steps are measured.
+    printf '  %-6s %s\n' "pwm" "fan readings after ${SETTLE}s"
+    for value in $STEPS; do
         if ! echo "$value" > "$pwm" 2>/dev/null; then
-            echo "  write $value : FAILED"
+            printf '  %-6s write failed\n' "$value"
             continue
         fi
         back="$(cat "$pwm" 2>/dev/null || echo ?)"
         sleep "$SETTLE"
         if [[ "$back" == "$value" ]]; then
-            printf '  write %-3s   : held, fans now %s\n' "$value" "$(show_fans)"
+            printf '  %-6s %s\n' "$value" "$(show_fans)"
         else
-            printf '  write %-3s   : CHIP SAYS %s, fans now %s\n' "$value" "$back" "$(show_fans)"
+            printf '  %-6s (chip says %s) %s\n' "$value" "$back" "$(show_fans)"
         fi
     done
     echo
 done
 
-echo "Read the two 'write' lines for each channel:"
-echo "  a value that is not held        -> the chip or driver rejects the write"
-echo "  values held but fans unchanged  -> something else is driving the fans"
-echo "  fans change between 255 and 60  -> that channel works"
+echo "Read each channel's sweep:"
+echo "  readings rise with the value   -> that channel works"
+echo "  readings flat across the sweep -> the fan ignores PWM, which usually"
+echo "                                    means a 3-pin fan on a header set to"
+echo "                                    PWM mode, or something else driving it"
+echo "  manual mode refused            -> the chip will not hand that channel"
+echo "                                    over. When only some channels refuse,"
+echo "                                    the driver has most likely identified"
+echo "                                    the chip wrongly and is using the"
+echo "                                    wrong register map."
