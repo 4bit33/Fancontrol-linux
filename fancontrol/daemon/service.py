@@ -22,6 +22,7 @@ from ..core.models import Config, validate
 from ..hw.registry import HardwareRegistry
 from ..importer.fancontrol_json import FanControlImporter
 from ..importer.mapping import HardwareMapper
+from . import state
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +53,8 @@ class FanControlService:
         #: has time to reach its new speed before the tachometer is read.
         self.calibration_settle = 1.5
 
+        #: Outputs recorded as held, so the file is only rewritten on a change.
+        self._held: dict[str, Any] = {}
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -64,6 +67,7 @@ class FanControlService:
         """Discover hardware and load (or create) the configuration."""
 
         self.registry.discover()
+        self._recover_outputs()
         try:
             self.config = config_module.load(self.config_path)
         except ValueError as exc:
@@ -79,6 +83,39 @@ class FanControlService:
                 log.warning("could not write the initial configuration: %s", exc)
 
         self.engine = ControlEngine(self.registry, self.config)
+
+    def _recover_outputs(self) -> None:
+        """Hand back anything a previous run was holding when it was killed."""
+
+        held = state.load()
+        if not held:
+            return
+        for output_id, saved in held.items():
+            output = self.registry.controls.get(output_id)
+            if output is None:
+                continue
+            try:
+                output.adopt(saved)
+                output.release()
+                log.warning(
+                    "%s was still held by a previous run; handed it back to the firmware",
+                    output_id,
+                )
+            except (OSError, NotImplementedError):
+                log.exception("could not hand %s back", output_id)
+        state.clear()
+
+    def _remember_outputs(self) -> None:
+        """Keep the on-disk record of held outputs in step with reality."""
+
+        held = {
+            output_id: output.saved_state()
+            for output_id, output in self.registry.controls.items()
+            if output.acquired
+        }
+        if held != self._held:
+            state.save(held)
+            self._held = held
 
     def run_forever(self) -> None:
         """Drive the control loop until :meth:`stop` is called."""
@@ -115,6 +152,10 @@ class FanControlService:
             if self.engine is not None:
                 self.engine.shutdown()
             self.registry.close()
+            # Everything is back with the firmware, so there is nothing left
+            # for a future run to recover.
+            state.clear()
+            self._held = {}
         log.info("daemon stopped, fan control handed back to the firmware")
 
     def tick(self) -> dict[str, Any]:
@@ -122,7 +163,9 @@ class FanControlService:
             if self.engine is None:
                 self.start()
             assert self.engine is not None
-            return self.engine.tick().to_dict()
+            status = self.engine.tick().to_dict()
+            self._remember_outputs()
+            return status
 
     # ------------------------------------------------------------------
     # notifications

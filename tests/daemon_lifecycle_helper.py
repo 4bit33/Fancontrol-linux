@@ -80,8 +80,73 @@ def main(workdir: str) -> int:
 
     result["enable_after_stop"] = enable_file.read_text().strip()
     result["log"] = log.read_text(errors="replace")[-2000:]
+
+    result.update(_crash_recovery(root, env, config, enable_file))
     print(json.dumps(result))
     return 0
+
+
+def _crash_recovery(root, env, config, enable_file) -> dict[str, object]:
+    """Kill a daemon outright, then check the next one cleans up after it.
+
+    A daemon that is killed cannot hand the fan back, so the output stays in
+    manual mode at whatever it was last set to. Nothing else on the system will
+    ever put it right, so the next start has to.
+    """
+
+    out: dict[str, object] = {}
+    log = root / "crash.log"
+    state = root / "acquired.json"
+    env = dict(env)
+    env["FANCONTROL_STATE"] = str(state)
+
+    with open(log, "w") as handle:
+        daemon = subprocess.Popen(
+            [sys.executable, "-m", "fancontrol.daemon", "--session", "-v"],
+            stdout=handle, stderr=subprocess.STDOUT, env=env,
+        )
+    for _ in range(120):
+        if "published org.fancontrol.Daemon" in log.read_text(errors="replace"):
+            break
+        time.sleep(0.25)
+    time.sleep(2)
+
+    out["crash_enable_while_running"] = enable_file.read_text().strip()
+    out["crash_state_file_written"] = state.exists()
+
+    daemon.kill()
+    daemon.wait(timeout=5)
+    # Nobody cleaned up, so the fan is still ours and still pinned.
+    out["crash_enable_after_kill"] = enable_file.read_text().strip()
+
+    # Now start again, with every control switched off, so the only reason the
+    # output could be released is the recovery.
+    data = json.loads(config.read_text())
+    for control in data["controls"]:
+        control["enabled"] = False
+    config.write_text(json.dumps(data))
+
+    log2 = root / "recover.log"
+    with open(log2, "w") as handle:
+        daemon = subprocess.Popen(
+            [sys.executable, "-m", "fancontrol.daemon", "--session", "-v"],
+            stdout=handle, stderr=subprocess.STDOUT, env=env,
+        )
+    for _ in range(120):
+        if "published org.fancontrol.Daemon" in log2.read_text(errors="replace"):
+            break
+        time.sleep(0.25)
+    time.sleep(1)
+
+    out["crash_enable_after_recovery"] = enable_file.read_text().strip()
+    out["crash_recovery_log"] = log2.read_text(errors="replace")[-1500:]
+
+    daemon.send_signal(signal.SIGTERM)
+    try:
+        daemon.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        daemon.kill()
+    return out
 
 
 if __name__ == "__main__":

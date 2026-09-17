@@ -17,6 +17,12 @@ RestartSec=5
 TimeoutStopSec=20
 KillSignal=SIGTERM
 
+# Where the daemon records which outputs it is holding, so that being killed
+# rather than stopped does not leave a fan pinned forever. Preserved across a
+# crash on purpose; a reboot resets the outputs anyway.
+RuntimeDirectory=fancontrold
+RuntimeDirectoryPreserve=yes
+
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes

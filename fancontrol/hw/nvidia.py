@@ -65,6 +65,10 @@ class NvidiaPwmOutput(PwmOutput):
         except NvmlError:
             return None
 
+    def adopt(self, state: dict) -> None:
+        # There is nothing to remember: handing a GPU fan back is one call.
+        self._acquired = True
+
     def acquire(self) -> None:
         # NVML has no separate "take control" call: writing a speed switches the
         # fan to manual, and nvmlDeviceSetDefaultFanSpeed_v2 gives it back.

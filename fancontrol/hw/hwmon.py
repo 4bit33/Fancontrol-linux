@@ -144,6 +144,16 @@ class HwmonPwmOutput(PwmOutput):
             return None
         return raw / PWM_MAX_RAW * 100.0
 
+    def saved_state(self) -> dict:
+        return {"enable": self._saved_enable, "value": self._saved_value}
+
+    def adopt(self, state: dict) -> None:
+        enable = state.get("enable")
+        value = state.get("value")
+        self._saved_enable = int(enable) if isinstance(enable, (int, float)) else None
+        self._saved_value = int(value) if isinstance(value, (int, float)) else None
+        self._acquired = True
+
     def acquire(self) -> None:
         if self._acquired:
             return

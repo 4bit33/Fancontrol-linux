@@ -68,3 +68,25 @@ def test_the_firmware_gets_the_fan_back(lifecycle):
 
 def test_it_says_so_in_the_log(lifecycle):
     assert "handed back to the firmware" in lifecycle["log"]
+
+
+# ----------------------------------------------------------------------
+# what happens when it is killed rather than stopped
+
+
+def test_a_held_output_is_recorded_while_running(lifecycle):
+    assert lifecycle["crash_enable_while_running"] == "1"
+    assert lifecycle["crash_state_file_written"] is True
+
+
+def test_killing_it_leaves_the_fan_pinned(lifecycle):
+    """The situation the recovery exists for: nothing handed the fan back."""
+
+    assert lifecycle["crash_enable_after_kill"] == "1"
+
+
+def test_the_next_start_hands_the_fan_back(lifecycle):
+    """Every control is switched off, so only the recovery can explain this."""
+
+    assert lifecycle["crash_enable_after_recovery"] == "2"
+    assert "held by a previous run" in lifecycle["crash_recovery_log"]

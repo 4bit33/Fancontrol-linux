@@ -115,6 +115,23 @@ class PwmOutput:
     def acquired(self) -> bool:
         raise NotImplementedError
 
+    def saved_state(self) -> dict[str, Any]:
+        """What ``release`` would need to put this output back as it was.
+
+        Written to a file while the output is held, so that a daemon which was
+        killed rather than stopped can still hand the fan back next time it
+        starts.
+        """
+        return {}
+
+    def adopt(self, state: dict[str, Any]) -> None:
+        """Take ownership of an output a previous run left behind.
+
+        After this, ``release`` restores ``state`` exactly as the earlier run
+        would have.
+        """
+        raise NotImplementedError
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
