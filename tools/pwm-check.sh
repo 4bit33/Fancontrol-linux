@@ -162,6 +162,8 @@ echo "All fan readings right now:  $(show_fans)"
 echo
 
 STEPS="${STEPS:-0 51 102 153 204 255}"
+CHANNELS=0
+WORKING=0
 
 for pwm in "${PWMS[@]}"; do
     channel="$(basename "$pwm")"
@@ -195,6 +197,8 @@ for pwm in "${PWMS[@]}"; do
     # Sweep upwards, so a fan that had to be restarted is already turning by
     # the time the higher steps are measured.
     printf '  %-6s %s\n' "pwm" "fan readings after ${SETTLE}s"
+    first_reading=""
+    last_reading=""
     for value in $STEPS; do
         if ! echo "$value" > "$pwm" 2>/dev/null; then
             printf '  %-6s write failed\n' "$value"
@@ -202,12 +206,17 @@ for pwm in "${PWMS[@]}"; do
         fi
         back="$(cat "$pwm" 2>/dev/null || echo ?)"
         sleep "$SETTLE"
+        reading="$(show_fans)"
+        [[ -z "$first_reading" ]] && first_reading="$reading"
+        last_reading="$reading"
         if [[ "$back" == "$value" ]]; then
-            printf '  %-6s %s\n' "$value" "$(show_fans)"
+            printf '  %-6s %s\n' "$value" "$reading"
         else
-            printf '  %-6s (chip says %s) %s\n' "$value" "$back" "$(show_fans)"
+            printf '  %-6s (chip says %s) %s\n' "$value" "$back" "$reading"
         fi
     done
+    CHANNELS=$(( CHANNELS + 1 ))
+    [[ "$first_reading" != "$last_reading" ]] && WORKING=$(( WORKING + 1 ))
     echo
 done
 
@@ -221,3 +230,36 @@ echo "                                    over. When only some channels refuse,"
 echo "                                    the driver has most likely identified"
 echo "                                    the chip wrongly and is using the"
 echo "                                    wrong register map."
+
+echo
+if (( CHANNELS > 0 && WORKING < CHANNELS )); then
+    echo "$WORKING of $CHANNELS swept channel(s) changed anything."
+fi
+if (( CHANNELS > 1 && WORKING <= 1 )); then
+    cat <<'ADVICE'
+
+Almost nothing responded, which points at the driver rather than the board:
+with the wrong register map, writes land on channels that are not there.
+
+Before compiling anything, make the driver use the identity you know is right.
+On Gigabyte boards it87 can report an IT8689E as an IT8628E, and the two have
+different maps:
+
+    lsmod | grep it87                    # a module, or built into the kernel?
+
+  If it is a module:
+    sudo modprobe -r it87
+    sudo modprobe it87 force_id=0x8689   # use the ID dmesg showed at boot
+    sudo ./tools/pwm-check.sh
+
+  If it is built in, the same goes on the kernel command line:
+    sudo grubby --update-kernel=ALL --args="it87.force_id=0x8689"
+
+  To keep it across reboots once it works:
+    echo "options it87 force_id=0x8689" | sudo tee /etc/modprobe.d/it87.conf
+
+If forcing the right ID does not help either, the out-of-tree driver at
+https://github.com/frankcrawford/it87 knows more board variants than the one
+in the kernel.
+ADVICE
+fi
