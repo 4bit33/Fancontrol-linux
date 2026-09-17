@@ -430,11 +430,13 @@ def cmd_doctor(client, args) -> int:
     from .hw.nvml import Nvml
 
     nvml = Nvml()
+    gpu_count = 0
     if not nvml.init():
         note("libnvidia-ml not present, or the driver is not loaded — GPU control off")
     else:
         try:
             count = nvml.device_count()
+            gpu_count = count
             good(f"NVML works, {count} GPU(s)")
             for index in range(count):
                 handle = nvml.device_handle(index)
@@ -480,8 +482,36 @@ def cmd_doctor(client, args) -> int:
              "(sudo systemctl start fancontrold)")
 
     try:
-        DaemonClient().version()
+        client = DaemonClient()
+        client.version()
         good("the daemon answers on D-Bus")
+
+        # What the daemon can see is what actually matters: it runs under
+        # systemd's sandbox, so it may have less access than this shell does.
+        inventory = client.inventory()
+        controls = inventory.get("controls", [])
+        temperatures = inventory.get("temperatures", [])
+        good(
+            f"the daemon sees {len(temperatures)} temperature sensor(s) "
+            f"and {len(controls)} control(s)"
+        )
+
+        backends = {entry["device"]["backend"] for entry in controls}
+        if not controls:
+            bad(
+                "the daemon found nothing to control",
+                "journalctl -u fancontrold -n 50 --no-pager",
+            )
+        if gpu_count and "nvidia" not in backends:
+            bad(
+                f"NVML works here but the daemon sees no NVIDIA fans "
+                f"({gpu_count} GPU(s) are present)",
+                "The daemon runs inside systemd's sandbox, so it can have less\n"
+                "access than this shell. Find out which it is:\n"
+                "    journalctl -u fancontrold -n 50 --no-pager | grep -i nvidia\n"
+                "    sudo systemctl stop fancontrold && sudo fancontrold --no-dbus -v\n"
+                "If the GPU appears when run by hand, it is the unit's hardening.",
+            )
     except DaemonError as exc:
         note(f"cannot reach the daemon over D-Bus: {exc}")
 
