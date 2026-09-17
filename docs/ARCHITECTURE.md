@@ -25,6 +25,14 @@ window.
 | `hw/base.py` | The `TempSensor` / `FanSensor` / `PwmOutput` interfaces |
 | `hw/hwmon.py` | The sysfs backend |
 | `hw/nvidia.py`, `hw/nvml.py` | NVIDIA, through a ctypes binding to NVML |
+
+NVIDIA fan control goes through NVML rather than the NV-CONTROL X extension
+that `nvidia-settings` uses. NV-CONTROL needs a running X server and the
+`Coolbits` X driver option, neither of which exists on a Wayland desktop or on
+a machine with no display at all; NVML talks to `/dev/nvidiactl` directly and
+needs neither. The practical consequence is that `Coolbits` has no bearing on
+whether this program can drive a GPU fan - what matters is the driver version,
+and CAP_SYS_ADMIN, which the driver checks on the ioctls that set a speed.
 | `hw/registry.py` | Aggregates the backends into one lookup table |
 | `hw/simulator.py` | A fake hwmon tree that responds to PWM writes |
 | `importer/fancontrol_json.py` | Reading FanControl's `userConfig.json`, whichever of its schemas it uses |
