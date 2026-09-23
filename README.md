@@ -1,100 +1,105 @@
 # fancontrol-linux
 
-Керування вентиляторами для Linux — у дусі
-[FanControl](https://github.com/Rem0o/FanControl.Releases) для Windows, але
-без .NET: демон на Python, який пише в `hwmon`, і вікно на Qt6, яке рідно
-виглядає в KDE Plasma.
+**English** · [Українська](README.uk.md)
 
-Головне: **читає ваш `userConfig.json` з Windows-версії FanControl** і сам
-зіставляє залізо з тим, що бачить Linux.
+Fan control for Linux in the spirit of
+[FanControl](https://github.com/Rem0o/FanControl.Releases) for Windows, without
+.NET: a Python daemon that drives `hwmon`, and a Qt6 window that looks at home
+in KDE Plasma.
 
-![Головне вікно](docs/screenshots/main-window.png)
+The headline feature: **it reads your `userConfig.json` from FanControl on
+Windows** and works out which Linux hardware each fan and sensor corresponds
+to.
 
----
-
-## Що вміє
-
-* **Криві** — усі сім типів, що є у FanControl:
-  * `Графік` — точки, які ви ставите мишею
-  * `Фіксована швидкість` — одне значення
-  * `Лінійна` — рампа між двома температурами
-  * `Цільова температура` — тримає задану температуру, а не мапить її у відсотки
-  * `Тригер` — дві швидкості з проміжком між порогами, щоб кулер не «сіпався»
-  * `Мікс` — комбінує інші криві (максимум / мінімум / середнє / сума / різниця)
-  * `Синхронізація` — повторює інший вентилятор зі зсувом чи множником
-* **Згладжування** — гістерезис і час відгуку **окремо для нагріву й
-  охолодження**: реагувати на стрибок температури миттєво, а сповільнюватись
-  повільно. Плюс «ігнорувати гістерезис за краями кривої».
-* **Налаштування на кожен вентилятор** — мінімум, максимум, зсув, поріг
-  зупинки, стартовий поштовх, обмеження швидкості наростання й спаду.
-* **Прошивка керує, поки холодно** — нижче заданої температури вентилятор
-  віддається прошивці. Для відеокарти це її власна крива разом із зупинкою
-  вентиляторів у простої; з порогу керування перебирає програма.
-* **Калібрування** — програма сама розганяє й гальмує вентилятор, чекає, поки
-  оберти устояться на кожному кроці, знаходить, де він зупиняється й де
-  стартує, і пропонує мінімум, старт і поріг зупинки. Працює у фоні.
-* **Безпека**:
-  * якщо датчик, потрібний кривій, зник — вентилятор іде на запасне значення
-    (за замовчуванням 100%), а не залишається на останньому;
-  * вище критичної температури всі керовані вентилятори йдуть на 100%;
-  * при зупинці демона всі `pwm*_enable` повертаються до значень, які там були
-    до нас — тобто керування повертається прошивці материнки;
-  * якщо демон убили (а не зупинили) — наступний запуск усе одно віддасть
-    захоплені виходи прошивці, бо він записує їх у `/run`;
-  * якщо тахометр показує 0 об/хв, поки вентилятор жене, — це видно в
-    інтерфейсі як «застряг».
-* **Залізо** — материнські чипи через `hwmon` (Nuvoton, ITE тощо), `amdgpu`,
-  `k10temp`/`coretemp`, NVMe, і відеокарти NVIDIA через NVML.
+![Main window](docs/screenshots/main-window.png)
 
 ---
 
-## Що перевірено, а що ні
+## What it does
 
-Чесно, щоб ви знали, на що розраховувати.
+* **Curves** — all seven kinds FanControl has:
+  * `Graph` — points you place with the mouse
+  * `Flat` — one fixed speed
+  * `Linear` — a ramp between two temperatures
+  * `Target` — holds a temperature rather than mapping it to a speed
+  * `Trigger` — two speeds with a gap between the thresholds, so the fan does not hunt
+  * `Mix` — combines other curves (max / min / average / sum / subtract)
+  * `Sync` — follows another fan, with an offset or multiplier
+* **Smoothing** — hysteresis and response time **separately for rising and
+  falling** temperatures: react to a spike at once, slow down gently. Plus
+  "ignore hysteresis past the ends of the curve".
+* **Per-fan settings** — minimum, maximum, offset, stop point, spin-up kick,
+  and limits on how fast the speed may rise and fall.
+* **Firmware while cool** — below a temperature you choose, a fan is handed
+  back to the firmware. For a graphics card that means its own curve,
+  including stopping the fans at idle; from the threshold up, this program
+  takes over.
+* **Calibration** — steps each fan down and up, waits for the speed to settle
+  at every step, finds where it stops and where it starts, and suggests a
+  minimum, start and stop point. Runs in the background.
+* **Safety**:
+  * a sensor a curve needs goes missing → the fan goes to a failsafe speed
+    (100% by default) rather than staying where it was;
+  * above a critical temperature every managed fan goes to 100%;
+  * stopping the daemon puts every `pwm*_enable` back as it was, i.e. hands
+    control back to the motherboard firmware;
+  * if the daemon is killed rather than stopped, the next start hands the fans
+    back anyway, because it records what it holds under `/run`;
+  * a fan reading 0 rpm while being driven is flagged as stalled.
+* **Hardware** — motherboard chips through `hwmon` (Nuvoton, ITE and others),
+  `amdgpu`, `k10temp`/`coretemp`, NVMe, and NVIDIA graphics cards through NVML.
 
-**Перевірено наживо** — на одній машині:
+---
+
+## What has been tested, and what has not
+
+Plainly, so you know what to expect.
+
+**Tested live** — on one machine:
 
 | | |
 |---|---|
-| Плата | Gigabyte B760 Gaming X AX DDR4, чип ITE IT8689E, позаядерний драйвер `it87` |
-| Процесор | Intel (`coretemp`) |
-| Відеокарта | NVIDIA GeForce RTX 3070, драйвер 610 |
-| Система | Fedora 44, KDE Plasma (Wayland), SELinux enforcing |
+| Motherboard | Gigabyte B760 Gaming X AX DDR4, ITE IT8689E, out-of-tree `it87` driver |
+| CPU | Intel (`coretemp`) |
+| Graphics | NVIDIA GeForce RTX 3070, driver 610 |
+| System | Fedora 44, KDE Plasma (Wayland), SELinux enforcing |
 
-Там працює все: чотири вентилятори плати, обидва вентилятори відеокарти,
-калібрування, імпорт справжнього Windows-конфігу, повне встановлення зі
-службою.
+Everything works there: four motherboard fans, both graphics card fans,
+calibration, importing a real Windows configuration, and a full install with
+the service.
 
-**Перевірено автоматично, без справжнього заліза:**
+**Tested automatically, without real hardware:**
 
-* 171 тест на кожен пуш, на Ubuntu і Fedora — криві, імпорт, рушій на
-  симуляторі заліза, D-Bus, життєвий цикл демона, вікно;
-* встановлення програми (без служби) у чистих контейнерах Fedora 44,
-  Ubuntu 24.04, Debian trixie, Arch і openSUSE Tumbleweed.
+* 171 tests on every push, on Ubuntu and Fedora — curves, the importer, the
+  control loop against simulated hardware, D-Bus, the daemon's lifecycle, the
+  window;
+* installing the program (without the service) in clean Fedora 44,
+  Ubuntu 24.04, Debian trixie, Arch and openSUSE Tumbleweed containers.
 
-**Не перевірено наживо:** чипи Nuvoton (`nct6775`), процесори й відеокарти AMD,
-інші відеокарти NVIDIA, повне встановлення зі службою на дистрибутивах, крім
-Fedora. Код для них той самий і має працювати — але «має» ще не «працює».
+**Not yet tested live:** Nuvoton chips (`nct6775`), AMD CPUs and graphics
+cards, other NVIDIA cards, a full install with the service on anything other
+than Fedora. The code for them is the same and should work — but "should" is
+not "does".
 
-**Не підтримується:** AIO-помпи й контролери з USB (Corsair, NZXT тощо —
-`liquidctl`), дистрибутиви без systemd.
+**Not supported:** USB-connected AIO pumps and fan hubs (Corsair, NZXT and
+similar — `liquidctl`), distributions without systemd.
 
-### Якщо у вас інше залізо — розкажіть
+### Different hardware? Please tell us
 
-Найкорисніше, що можна зробити для проєкту, — запустити на своїй машині й
-відкрити [issue](../../issues/new?template=hardware-report.md), навіть якщо все
-працює:
+The most useful thing you can do for the project is to run it on your machine
+and open an [issue](../../issues/new?template=hardware-report.md) — even if
+everything works:
 
 ```bash
 fanctl doctor
 sudo ./tools/pwm-check.sh
 ```
 
-Шаблон issue підкаже, що ще вказати.
+The issue template asks for the rest.
 
 ---
 
-## Встановлення
+## Installing
 
 ```bash
 git clone https://github.com/4bit33/Fancontrol-linux.git
@@ -102,241 +107,247 @@ cd Fancontrol-linux
 sudo ./install.sh
 ```
 
-Скрипт знає `dnf` (Fedora), `apt` (Debian, Ubuntu), `pacman` (Arch) і
-`zypper` (openSUSE). Він поставить із репозиторіїв дистрибутива те, що там є,
-а PySide6 і dasbus, яких у деяких дистрибутивах немає, докачає з PyPI у власне
-оточення програми — системний Python не зачіпається. Далі — `systemd`-юніт,
-політика D-Bus, пункт у меню, і демон увімкнеться.
+The script knows `dnf` (Fedora), `apt` (Debian, Ubuntu), `pacman` (Arch) and
+`zypper` (openSUSE). It installs what the distribution packages, and fetches
+PySide6 and dasbus from PyPI into the program's own environment where the
+distribution has none — the system Python is left alone. Then the systemd
+unit, the D-Bus policy and the menu entry, and the daemon is started.
 
-Потрібен systemd. Змінювати налаштування вентиляторів можуть члени групи
-адміністраторів — `wheel` (Fedora, Arch, openSUSE) або `sudo` (Debian, Ubuntu);
-інсталятор сам бере ту, що є на машині. Дивитись статус може будь-хто.
+systemd is required. Fan settings can be changed by the administrators'
+group — `wheel` (Fedora, Arch, openSUSE) or `sudo` (Debian, Ubuntu); the
+installer uses whichever the machine has. Anyone can read the status.
 
 ```bash
-sudo ./install.sh --uninstall        # прибрати (конфіг лишиться в /etc)
+sudo ./install.sh --uninstall        # remove it (the configuration stays in /etc)
 ```
 
 ---
 
-## Перші кроки
+## First steps
 
-1. **Перевірка, чи взагалі все на місці:**
+1. **Check that everything is in place:**
 
    ```bash
    fanctl doctor
    ```
 
-   Показує знайдені чипи, чи є в них PWM-виходи, які модулі завантажені, стан
-   NVIDIA і демона. Якщо щось не так — див. [Якщо не працює](#якщо-не-працює).
+   Shows the chips found, whether they have PWM outputs, which modules are
+   loaded, and the state of NVIDIA and the daemon. If anything is wrong, see
+   [When it does not work](#when-it-does-not-work).
 
-2. **Який вентилятор на якому каналі.** Номери `pwm1..pwmN` нічого не кажуть
-   про те, де вентилятор стоїть. Скрипт по черзі розкручує канали й дивиться,
-   який тахометр зреагував — порожні роз'єми теж видно, а наприкінці все
-   повертається як було:
+2. **Which fan is on which channel.** The numbers `pwm1..pwmN` say nothing
+   about where a fan physically is. This raises each channel in turn and
+   watches which tachometer reacts — empty headers show up too, and
+   everything is put back as it was at the end:
 
    ```bash
    sudo ./tools/identify-fans.sh
    ```
 
-3. **Налаштування** — імпорт із Windows (див. нижче) або з нуля у вікні
+3. **Configure** — import from Windows (below), or start from scratch in
    `fancontrol-gui`.
 
-4. **Калібрування** кожного вентилятора — кілька хвилин на кожен:
+4. **Calibrate** each fan — a few minutes each:
 
    ```bash
-   fanctl calibrate "Назва вентилятора"
+   fanctl calibrate "Fan name"
    ```
 
 ---
 
-## Користування
+## Using it
 
-### Вікно
+### The window
 
 ```bash
 fancontrol-gui
 ```
 
-Зліва вентилятори, посередині криві, справа датчики. Перемикач
-**Fan control on** у панелі інструментів віддає вентилятори назад прошивці —
-зручно, коли треба швидко перевірити, чи проблема у вашій кривій.
+Fans on the left, curves in the middle, sensors on the right. The
+**Fan control on** switch in the toolbar hands every fan back to the
+firmware — handy for checking whether a problem is in your curve.
 
-У графіку: тягніть точку мишею, подвійний клац — додати точку, права кнопка —
-прибрати. ⚙ на картці вентилятора — мінімум, старт, обмеження швидкості і
-поріг, нижче якого керує прошивка. Датчики можна перейменовувати подвійним
-кліком.
+On the graph: drag a point to move it, double-click to add one, right-click to
+remove one. ⚙ on a fan's card opens its minimum, start, rate limits and the
+temperature below which the firmware runs it. Double-click a sensor to rename
+it.
 
-### Термінал
+### The terminal
 
 ```bash
-fanctl doctor                    # чи взагалі може працювати на цій машині
-fanctl status                    # що зараз роблять вентилятори
-fanctl list                      # усе знайдене залізо
-fanctl set "CPU cooler" 60       # покрутити вручну
-fanctl auto "CPU cooler"         # повернути під криву
-fanctl calibrate "CPU cooler"    # виміряти старт і зупинку
-fanctl disable                   # віддати вентилятори прошивці
-fanctl config -o backup.json     # зберегти конфіг
+fanctl doctor                    # can this machine work at all
+fanctl status                    # what every fan is doing now
+fanctl list                      # all the hardware found
+fanctl set "CPU cooler" 60       # drive a fan by hand
+fanctl auto "CPU cooler"         # hand it back to its curve
+fanctl calibrate "CPU cooler"    # measure where it starts and stops
+fanctl disable                   # hand every fan back to the firmware
+fanctl config -o backup.json     # save the configuration
 ```
 
 ---
 
-## Імпорт налаштувань із Windows
+## Importing from FanControl on Windows
 
 ```bash
-fanctl import ~/userConfig.json          # тільки показати, що вийде
-fanctl import ~/userConfig.json --apply  # застосувати
+fanctl import ~/userConfig.json          # just show what it would do
+fanctl import ~/userConfig.json --apply  # apply it
 ```
 
-Або у вікні: **Import from FanControl…** — там же можна вибрати відповідність
-для датчиків, які програма не зіставила сама.
+Or in the window: **Import from FanControl…** — which also lets you choose for
+the sensors the program would not match by itself.
 
-### Що саме переноситься
+### What carries over
 
-Формат FanControl мінявся між версіями, тому імпортер не розраховує на одну
-схему, а шукає об'єкти **структурно**. Перевірено на справжньому
-`userConfig.json` версії 270 (він лежить у `tests/data/` як регресійний тест):
+FanControl's file format has changed between releases, so the importer does
+not rely on one schema; it finds objects **by what they contain**. It is
+tested against a real version 270 `userConfig.json`, kept in `tests/data/` as
+a regression test:
 
-* точки кривих у всіх трьох виглядах — рядки `"20.4,21.0"` (v270), словник
-  `{"30": 20}` і об'єкти `[{"X": 30, "Y": 20}]`;
-* посилання на криві за GUID, за іменем і як `{"Name": "…"}`;
-* гістерезис і час відгуку **окремо для нагріву й охолодження**
-  (`HysteresisConfig`), разом з «ігнорувати на краях кривої»;
-* діапазон осі графіка — крива для відеокарти до 120 °C лишається такою;
-* прив'язка тахометра до конкретного роз'єму (`PairedFanSensor`);
-* `SelectedStart` / `SelectedStop` — точки старту й зупинки вентилятора;
-* таблиця калібрування (`Calibration`).
+* curve points in all three encodings — `"20.4,21.0"` strings (v270), a
+  `{"30": 20}` dictionary, and `[{"X": 30, "Y": 20}]` objects;
+* curves referenced by GUID, by name, and as `{"Name": "…"}`;
+* hysteresis and response time **separately for rising and falling**
+  (`HysteresisConfig`), with "ignore at the ends of the curve";
+* the graph's axis range — a graphics card curve up to 120 °C stays that way;
+* which tachometer belongs to which header (`PairedFanSensor`);
+* `SelectedStart` / `SelectedStop` — a fan's start and stop points;
+* the calibration table (`Calibration`).
 
-Якщо ви з того часу переставляли вентилятори, калібрування з Windows описує
-стару розводку — варто відкалібрувати заново.
+If you have moved fans around since, the calibration from Windows describes
+the old wiring — calibrate again.
 
-### Як зіставляється залізо
+### How the hardware is matched
 
-FanControl зберігає ідентифікатори у форматі LibreHardwareMonitor
-(`/lpc/it8689e/control/0`), а для NVIDIA — у власному
-(`NVApiWrapper/0-GA104-A/control/0`). Для Linux вони нічого не означають:
+FanControl stores LibreHardwareMonitor identifiers (`/lpc/it8689e/control/0`),
+and its own scheme for NVIDIA (`NVApiWrapper/0-GA104-A/control/0`). They mean
+nothing to Linux:
 
-| З Windows | Стає на Linux | Як здогадались |
+| From Windows | Becomes on Linux | Why |
 |---|---|---|
-| `/lpc/it8689e/control/0` | `hwmon:it8689-…:pwm1` | та сама мікросхема; LHM рахує з нуля, hwmon — з одиниці |
-| `/lpc/it8689e/fan/0` | `hwmon:it8689-…:fan1` | те саме для тахометрів |
-| `/amdcpu/0/temperature/2` | `hwmon:k10temp-…:temp1` | `amdcpu` → `k10temp`, канал із міткою `Tctl` |
-| `NVApiWrapper/0-GA104-A/control/1` | `nvidia:GPU-…:pwm1` | відеокарта NVIDIA через NVML, збігається номер вентилятора |
+| `/lpc/it8689e/control/0` | `hwmon:it8689-…:pwm1` | same chip; LHM counts from zero, hwmon from one |
+| `/lpc/it8689e/fan/0` | `hwmon:it8689-…:fan1` | the same for tachometers |
+| `/amdcpu/0/temperature/2` | `hwmon:k10temp-…:temp1` | `amdcpu` → `k10temp`, the channel labelled `Tctl` |
+| `NVApiWrapper/0-GA104-A/control/1` | `nvidia:GPU-…:pwm1` | NVIDIA card through NVML, fan number matches |
 
-Автоматично застосовується лише те, де найкращий кандидат і впевнений, і
-помітно попереду наступного. **Свідомо не вгадуємо наосліп:**
+Only a match that is both confident and clearly ahead of the runner-up is
+applied automatically. **It deliberately does not guess:**
 
-* якщо два кандидати рівні — поле лишається порожнім;
-* якщо два різні Windows-датчики претендують на **один** Linux-датчик, обидва
-  йдуть на ручний вибір. Так буває з Intel: `/intelcpu/0/temperature/0` і
-  `/1` обидва найкраще підходять до `Package id 0`, але це були різні датчики;
-* що не вдалося зіставити — імпортується вимкненим, і в повідомленні пишеться
-  **чому саме**.
+* two equally good candidates → the choice is left to you;
+* two different Windows sensors that both want **one** Linux sensor → both go
+  to you. This happens with Intel: `/intelcpu/0/temperature/0` and `/1` both
+  match `Package id 0` best, but they were different sensors;
+* anything that cannot be matched is imported switched off, and you are told
+  **why**.
 
-Єдине, що не можна підтвердити з самого файлу, — порядок нумерації функцій
-мікс-кривої, тож імпорт такої кривої завжди лишає попередження.
+The one thing a file cannot confirm is how FanControl numbers the mix
+functions, so importing a mix curve always leaves a warning.
 
 ---
 
-## Якщо не працює
+## When it does not work
 
-### Вентиляторів не видно
+### No fans are found
 
-Найчастіша причина — ядро ще не знає про super-I/O чип материнки:
+The usual reason is that the kernel does not know about the motherboard's
+super-I/O chip yet:
 
 ```bash
-sudo sensors-detect        # погоджуйтесь на безпечні варіанти за замовчуванням
-sudo modprobe nct6775      # або той модуль, який назве sensors-detect
+sudo sensors-detect        # accept the safe defaults
+sudo modprobe nct6775      # or whichever module sensors-detect names
 sudo fanctl rescan
-echo nct6775 | sudo tee /etc/modules-load.d/fancontrol.conf   # щоб вантажився при старті
+echo nct6775 | sudo tee /etc/modules-load.d/fancontrol.conf   # load it at boot
 ```
 
-На багатьох платах (особливо Gigabyte з чипами ITE) ACPI тримає ці порти, і
-`it87` відмовляється вантажитись із `Device or resource busy`. Позаядерна
-версія драйвера ([frankcrawford/it87](https://github.com/frankcrawford/it87))
-знає більше плат і має власний параметр, що стосується лише її:
+On many boards (Gigabyte with ITE chips especially) ACPI claims these ports
+and `it87` refuses to load with `Device or resource busy`. The out-of-tree
+driver ([frankcrawford/it87](https://github.com/frankcrawford/it87)) knows more
+boards and has its own parameter for this, which affects only itself:
 
 ```bash
 echo "options it87 ignore_resource_conflict=1" | sudo tee /etc/modprobe.d/it87.conf
 ```
 
-Для ядрового драйвера — параметр ядра `acpi_enforce_resources=lax`:
+For the in-kernel driver, it is the kernel parameter
+`acpi_enforce_resources=lax`:
 
 ```bash
 sudo grubby --update-kernel=ALL --args="acpi_enforce_resources=lax"   # Fedora, RHEL
-# Debian, Ubuntu, Arch: дописати в GRUB_CMDLINE_LINUX_DEFAULT у /etc/default/grub,
-# потім  sudo update-grub  (Debian, Ubuntu)
-# або    sudo grub-mkconfig -o /boot/grub/grub.cfg  (Arch)
+# Debian, Ubuntu, Arch: add it to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub,
+# then  sudo update-grub  (Debian, Ubuntu)
+# or    sudo grub-mkconfig -o /boot/grub/grub.cfg  (Arch)
 ```
 
-Обидва знімають захист ядра від одночасного доступу ACPI й драйвера до тих
-самих портів. Зазвичай без проблем, але ризик не нульовий — вирішуйте самі.
+Both lift the kernel's protection against ACPI and the driver using the same
+ports at once. Usually harmless, but not risk-free — your call.
 
-### Вентилятори видно, але вони не реагують
+### Fans are found but do not respond
 
 ```bash
 sudo ./tools/pwm-check.sh
 ```
 
-Робить повний свіп 0 → 255 на кожному каналі й розрізняє причини, які ззовні
-виглядають однаково:
+Sweeps every channel from 0 to 255 and tells apart causes that look the same
+from outside:
 
-* **значення не тримається** — чип або драйвер відхиляє запис;
-* **ручний режим відхилено** — чип не віддає цей канал;
-* **тримається, але оберти не змінюються** — вентилятор ігнорує PWM (типово для
-  3-пінової вертушки в роз'ємі в режимі PWM), або ним керує щось інше;
-* **оберти ростуть разом зі значенням** — керування працює.
+* **the value is not held** — the chip or driver rejects the write;
+* **manual mode is refused** — the chip will not hand the channel over;
+* **held, but the speed does not change** — the fan ignores PWM (typical of a
+  3-pin fan on a header in PWM mode), or something else drives it;
+* **speed rises with the value** — control works.
 
-Ще показує параметри драйвера з `/etc/modprobe.d` і що він написав при
-завантаженні.
+It also shows the driver's options from `/etc/modprobe.d` and what it said
+when it loaded.
 
-#### Драйвер налаштований на чужий чип
+#### The driver is told it has a different chip
 
-У `it87` є параметр `force_id`, який змушує вважати чип іншою моделлю — його
-часто радять в інструкціях під конкретні плати. З чужим ID драйвер бере чужу
-карту регістрів: частина каналів працює, решта мовчить.
+`it87` has a `force_id` option that makes it treat the chip as another model —
+often recommended in guides for particular boards. With the wrong ID it uses
+the wrong register map: some channels work, the rest do nothing.
 
-На Gigabyte B760 Gaming X AX саме так і було: `/etc/modprobe.d/it87.conf` мав
-`force_id=0x8628`, хоча чип — IT8689E. З `0x8689` запрацювали всі роз'єми.
+That is exactly what happened on the Gigabyte B760 Gaming X AX:
+`/etc/modprobe.d/it87.conf` had `force_id=0x8628`, but the chip is an IT8689E.
+With `0x8689` every header worked.
 
 ```bash
-grep -r it87 /etc/modprobe.d/               # що нав'язано драйверу
-journalctl -k -b | grep -i "Found.*chip"    # що він у підсумку визначив
+grep -r it87 /etc/modprobe.d/               # what the driver is being told
+journalctl -k -b | grep -i "Found.*chip"    # what it ended up detecting
 ```
 
-### Відеокарта NVIDIA
+### NVIDIA graphics cards
 
-Перевірка, чи драйвер дозволяє керувати вентиляторами і чи не заважає служба:
+To check whether the driver allows fan control and whether the service is in
+the way:
 
 ```bash
 sudo ./tools/nvidia-diagnose.sh
 ```
 
-Дві речі, які інсталятор уже враховує, але їх корисно знати:
+Two things the installer already handles, but which are worth knowing:
 
-* **Capabilities.** Юніт свідомо забирає в демона всі capabilities — для
-  запису в PWM вони не потрібні. Драйверу NVIDIA потрібні: без них
-  `nvmlDeviceSetFanSpeed_v2` відповідає «no permission». На машинах з NVIDIA
-  інсталятор кладе однорядковий drop-in, що їх повертає; решта ізоляції
-  лишається.
-* **SELinux.** systemd обирає домен служби за міткою файлу, який запускає.
-  Скрипт у venv має мітку `lib_t`, і демон лишався б у `init_t`, звідки
-  політика не пускає до `/dev/nvidia*`. Тому юніт запускає інтерпретатор
-  (`bin_t`), і демон потрапляє в звичайний `unconfined_service_t`.
-  `fanctl doctor` показує домен.
+* **Capabilities.** The unit deliberately gives the daemon no capabilities —
+  writing to PWM needs none. The NVIDIA driver does: without them
+  `nvmlDeviceSetFanSpeed_v2` answers "no permission". On machines with an
+  NVIDIA card the installer adds a one-line drop-in that restores them; the
+  rest of the sandbox stays.
+* **SELinux.** systemd picks a service's domain from the label of the file it
+  runs. The venv's script is `lib_t`, which would leave the daemon in
+  `init_t`, from where the policy keeps it away from `/dev/nvidia*`. So the
+  unit runs the interpreter (`bin_t`) and the daemon lands in the ordinary
+  `unconfined_service_t`. `fanctl doctor` shows the domain.
 
-**Coolbits не потрібен.** Порада «увімкни `Option "Coolbits" "4"` в
-`xorg.conf`» стосується `nvidia-settings` і розширення NV-CONTROL X-сервера.
-Ця програма ходить через NVML, який X-сервера не питає взагалі — і на Wayland
-`xorg.conf` нікому читати.
+**Coolbits is not needed.** The advice to set `Option "Coolbits" "4"` in
+`xorg.conf` is about `nvidia-settings` and the X server's NV-CONTROL
+extension. This program uses NVML, which never asks the X server — and on
+Wayland nothing reads `xorg.conf` anyway.
 
 ---
 
-## Спробувати без ризику
+## Try it without risk
 
-Є симулятор заліза: він створює дерево, схоже на `/sys/class/hwmon`, і
-відповідає на запис PWM так, як відповідала б справжня система — температура
-падає, коли вентилятори розкручуються.
+There is a hardware simulator: it builds a tree that looks like
+`/sys/class/hwmon` and answers PWM writes the way a real machine would — the
+temperature falls as the fans speed up.
 
 ```bash
 fancontrol-sim --root /tmp/fake-hwmon &
@@ -346,67 +357,68 @@ FANCONTROL_CONFIG=/tmp/fake-config.json \
   fancontrol-gui --local
 ```
 
-Жоден справжній вентилятор при цьому не чіпається.
+No real fan is touched.
 
 ---
 
-## Як воно влаштоване
+## How it fits together
 
 ```
 fancontrol-gui ──D-Bus──► fancontrold ──► /sys/class/hwmon/*/pwm*
-   (ваш юзер)      │        (root)     └─► NVML (libnvidia-ml.so)
+   (you)           │        (root)     └─► NVML (libnvidia-ml.so)
                    │
                 fanctl
 ```
 
-Демон працює під root, бо запис у PWM цього вимагає. Вікно працює від вашого
-користувача й спілкується з ним через системну шину D-Bus
-(`org.fancontrol.Daemon`). Читати статус може будь-хто; змінювати
-налаштування — група адміністраторів.
+The daemon runs as root, because writing to PWM requires it. The window runs
+as you and talks to it over the system D-Bus (`org.fancontrol.Daemon`).
+Anyone may read the status; changing settings takes the administrators'
+group.
 
-Детальніше — у [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-| Що | Де |
+| What | Where |
 |---|---|
-| Конфігурація | `/etc/fancontrol-linux/config.json` (+ `.bak` попередньої) |
-| Програма | `/usr/lib/fancontrol-linux/` |
-| systemd-юніт | `/usr/lib/systemd/system/fancontrold.service` |
-| Політика D-Bus | `/usr/share/dbus-1/system.d/org.fancontrol.Daemon.conf` |
+| Configuration | `/etc/fancontrol-linux/config.json` (+ `.bak` of the previous one) |
+| Program | `/usr/lib/fancontrol-linux/` |
+| systemd unit | `/usr/lib/systemd/system/fancontrold.service` |
+| D-Bus policy | `/usr/share/dbus-1/system.d/org.fancontrol.Daemon.conf` |
 
-Конфіг — звичайний JSON, його можна редагувати руками; `sudo systemctl reload
-fancontrold` перечитає його.
+The configuration is plain JSON and can be edited by hand;
+`sudo systemctl reload fancontrold` re-reads it.
 
 ---
 
-## Розробка
+## Development
 
 ```bash
-python3 -m venv --system-site-packages .venv     # PyGObject — з дистрибутива
+python3 -m venv --system-site-packages .venv     # PyGObject from the distribution
 .venv/bin/pip install -e '.[dev,gui,daemon]'
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest   # справжнє залізо не потрібне
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest   # no real hardware needed
 ```
 
-Тести ганяють криві, імпортер на **справжньому** `userConfig.json` версії 270,
-рушій на симуляторі (включно з наскрізним «машина реально охолоджується»),
-сигнатури D-Bus-інтерфейсу, повний життєвий цикл демона на справжній шині
-(запуск, SIGTERM, SIGKILL, повернення керування прошивці) і вікно під
-offscreen-платформою Qt. GitHub Actions проганяє їх на кожен пуш на Ubuntu і
-Fedora.
+The tests cover the curves, the importer against a **real** version 270
+`userConfig.json`, the control loop against simulated hardware (including an
+end-to-end "the machine actually cools down"), the D-Bus interface's
+signatures, the daemon's whole lifecycle on a real bus (start, SIGTERM,
+SIGKILL, handing control back to the firmware), and the window under Qt's
+offscreen platform. GitHub Actions runs them on Ubuntu and Fedora for every
+push.
 
-Інсталятор на різних дистрибутивах перевіряється в чистих контейнерах
-(потрібен podman або `ENGINE=docker`):
+The installer is checked on different distributions in clean containers
+(podman, or `ENGINE=docker`):
 
 ```bash
 ./tools/test-install-in-containers.sh           # Fedora, Ubuntu, Debian, Arch, openSUSE
-./tools/test-install-in-containers.sh ubuntu    # лише один
+./tools/test-install-in-containers.sh ubuntu    # just one
 ```
 
-У контейнерах немає systemd, тож це перевіряє половину інсталятора, яка й
-відрізняється між дистрибутивами: залежності й саму програму
+Containers have no systemd, so this covers the half of the installer that
+differs between distributions: dependencies and the program itself
 (`install.sh --program-only`).
 
 ---
 
-## Ліцензія
+## Licence
 
 [GPL-3.0-or-later](LICENSE).

@@ -2,57 +2,58 @@
 
 ## 1.0.0 — 2026-09-23
 
-Перший реліз.
+First release.
 
-### Керування
+### Control
 
-* Сім типів кривих, як у FanControl для Windows: графік, фіксована швидкість,
-  лінійна, цільова температура, тригер, мікс і синхронізація.
-* Гістерезис і час відгуку окремо для нагріву й охолодження.
-* На кожен вентилятор: мінімум, максимум, зсув, поріг зупинки, стартовий
-  поштовх, обмеження швидкості наростання й спаду.
-* Прошивка керує вентилятором, поки температура нижче порогу. Для відеокарти
-  NVIDIA це її власна крива разом із зупинкою вентиляторів у простої.
-* Калібрування: де вентилятор зупиняється й стартує, з очікуванням, поки оберти
-  устояться на кожному кроці.
+* Seven curve types, as in FanControl for Windows: graph, flat, linear,
+  target, trigger, mix and sync.
+* Hysteresis and response time separately for rising and falling
+  temperatures.
+* Per fan: minimum, maximum, offset, stop point, spin-up kick, and limits on
+  how fast the speed may rise and fall.
+* The firmware runs a fan while the temperature is below a threshold. For an
+  NVIDIA card that is its own curve, including stopping the fans at idle.
+* Calibration finds where a fan stops and starts, waiting for the speed to
+  settle at every step.
 
-### Безпека
+### Safety
 
-* Недоступний датчик — запасна швидкість (100% за замовчуванням), критична
-  температура — усі вентилятори на 100%.
-* Зупинка демона повертає керування прошивці; якщо демон убили, наступний
-  запуск робить це за нього.
-* Вентилятор, що стоїть, поки його женуть, позначається як «застряг».
+* An unreadable sensor sends the fan to a failsafe speed (100% by default); a
+  critical temperature sends every fan to 100%.
+* Stopping the daemon hands control back to the firmware; if the daemon is
+  killed, the next start does it instead.
+* A fan standing still while being driven is flagged as stalled.
 
-### Залізо
+### Hardware
 
-* Будь-які чипи через `hwmon`: Nuvoton, ITE, `amdgpu`, `k10temp`, `coretemp`,
-  NVMe.
-* Відеокарти NVIDIA через NVML, без X-сервера і без Coolbits — працює на
-  Wayland.
+* Any chip exposed through `hwmon`: Nuvoton, ITE, `amdgpu`, `k10temp`,
+  `coretemp`, NVMe.
+* NVIDIA graphics cards through NVML, with no X server and no Coolbits — works
+  on Wayland.
 
-### Імпорт із Windows
+### Importing from Windows
 
-* Читає `userConfig.json` FanControl (перевірено на версії 270) і сам зіставляє
-  ідентифікатори LibreHardwareMonitor та NvAPI з тим, що бачить Linux.
-  Неоднозначні випадки лишає на вибір користувача, а не вгадує.
+* Reads FanControl's `userConfig.json` (tested with version 270) and matches
+  LibreHardwareMonitor and NvAPI identifiers to the hardware Linux sees.
+  Ambiguous cases are left to the user rather than guessed.
 
-### Програми
+### Programs
 
-* `fancontrold` — служба systemd; `fancontrol-gui` — вікно на Qt6;
-  `fanctl` — термінал; `fancontrol-sim` — симулятор заліза, щоб спробувати без
-  ризику.
-* Діагностика: `fanctl doctor`, `tools/pwm-check.sh`, `tools/identify-fans.sh`,
-  `tools/nvidia-diagnose.sh`.
+* `fancontrold` — the systemd service; `fancontrol-gui` — the Qt6 window;
+  `fanctl` — the terminal; `fancontrol-sim` — a hardware simulator for trying
+  it out without risk.
+* Diagnostics: `fanctl doctor`, `tools/pwm-check.sh`,
+  `tools/identify-fans.sh`, `tools/nvidia-diagnose.sh`.
 
-### Встановлення
+### Installing
 
-* `install.sh` для Fedora, Debian, Ubuntu, Arch і openSUSE; програма живе у
-  власному оточенні й не чіпає системний Python.
+* `install.sh` for Fedora, Debian, Ubuntu, Arch and openSUSE; the program
+  lives in its own environment and leaves the system Python alone.
 
-### Що перевірено
+### What has been tested
 
-Наживо — Gigabyte B760 Gaming X AX (ITE IT8689E), Intel, NVIDIA RTX 3070,
-Fedora 44 з KDE Plasma. Автоматично — 171 тест на Ubuntu і Fedora, встановлення
-програми в контейнерах п'яти дистрибутивів. Звіти з іншого заліза дуже
-вітаються.
+Live: Gigabyte B760 Gaming X AX (ITE IT8689E), Intel, NVIDIA RTX 3070,
+Fedora 44 with KDE Plasma. Automatically: 171 tests on Ubuntu and Fedora, and
+installing the program in containers of five distributions. Reports from
+other hardware are very welcome.
