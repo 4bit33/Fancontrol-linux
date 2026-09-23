@@ -260,3 +260,56 @@ def test_resuming_does_not_ramp_from_a_stale_value(registry):
     # The slew limiter must not believe the fan is still at 100% and crawl down
     # from there at 1%/s; it starts from where the hardware actually is.
     assert status.controls["control"]["applied_percent"] < 50
+
+
+def test_the_firmware_gets_the_fan_while_it_is_cool(registry):
+    """Below the threshold the output goes back; at it, we take it again."""
+
+    config, output_id, sensor_id = build(registry, min_percent=0)
+    control = config.controls[0]
+    control.firmware_below = 40.0
+    control.firmware_sensor_id = sensor_id
+    control.firmware_hysteresis = 3.0
+    engine = ControlEngine(registry, config)
+    output = registry.controls[output_id]
+
+    def at(temp):
+        registry.temps[sensor_id].path.write_text(f"{int(temp * 1000)}\n")
+        return engine.tick().controls["control"]
+
+    assert at(30)["with_firmware"] is True
+    assert not output.acquired
+
+    assert at(41)["with_firmware"] is False        # warm: ours
+    assert output.acquired
+
+    assert at(38.5)["with_firmware"] is False      # inside the gap: stays ours
+    assert at(36)["with_firmware"] is True         # below 40 - 3: firmware again
+    assert not output.acquired
+
+    assert at(38.5)["with_firmware"] is True       # inside the gap: stays theirs
+
+
+def test_an_unreadable_sensor_never_leaves_the_fan_to_the_firmware(registry):
+    config, output_id, sensor_id = build(registry)
+    control = config.controls[0]
+    control.firmware_below = 40.0
+    control.firmware_sensor_id = sensor_id
+    registry.temps[sensor_id].path.write_text("-273000\n")
+    status = ControlEngine(registry, config).tick()
+    assert status.controls["control"]["with_firmware"] is False
+    assert registry.controls[output_id].acquired
+
+
+def test_a_critical_temperature_takes_the_fan_back(registry):
+    config, output_id, sensor_id = build(registry)
+    control = config.controls[0]
+    control.firmware_below = 40.0
+    # Watch a cool sensor for the hand-over, while the curve's sensor is hot.
+    cool = next(s for s in registry.temps if s != sensor_id)
+    control.firmware_sensor_id = cool
+    registry.temps[cool].path.write_text("30000\n")
+    registry.temps[sensor_id].path.write_text("95000\n")
+    status = ControlEngine(registry, config).tick()
+    assert status.critical is True
+    assert status.controls["control"]["with_firmware"] is False

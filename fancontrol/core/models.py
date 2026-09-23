@@ -304,6 +304,14 @@ class Control:
     #: stall detection.
     fan_sensor_id: str = ""
     hidden: bool = False
+    #: Below this temperature on ``firmware_sensor_id`` the output is handed
+    #: back to the firmware, which for a GPU means its own curve, including
+    #: stopping the fans at idle. 0 disables it.
+    firmware_below: float = 0.0
+    firmware_sensor_id: str = ""
+    #: Taken back at ``firmware_below`` and handed over again only once the
+    #: temperature is this far below it, so it does not flip at the boundary.
+    firmware_hysteresis: float = 3.0
     #: Measured (percent, rpm) pairs, either from this program's calibration or
     #: imported from FanControl's. Shown in the UI; nothing depends on it.
     calibration: list[list[float]] = field(default_factory=list)
@@ -429,6 +437,11 @@ def validate(config: Config) -> list[str]:
             )
         if control.min_percent > control.max_percent:
             problems.append(f"control {control.name!r}: min percent above max percent")
+        if control.firmware_below > 0 and not control.firmware_sensor_id:
+            problems.append(
+                f"control {control.name!r} hands over to the firmware below "
+                f"{control.firmware_below:g} °C but names no sensor to watch"
+            )
         if control.stop_percent > control.max_percent:
             problems.append(f"control {control.name!r}: stop percent above max percent")
 

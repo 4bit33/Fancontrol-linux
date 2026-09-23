@@ -39,6 +39,8 @@ class ControlRuntime:
     stall_ticks: int = 0
     stalled: bool = False
     last_error: str = ""
+    #: The output is currently with the firmware because it is cool enough.
+    with_firmware: bool = False
 
 
 @dataclass
@@ -77,6 +79,8 @@ class ControlEngine:
         self.runtime: dict[str, ControlRuntime] = {}
         self.status = EngineStatus()
         self._last_tick: float | None = None
+        #: Readings from the current tick, for decisions made per control.
+        self._temperatures: dict[str, float | None] = {}
         #: Controls the user is temporarily driving by hand from the UI,
         #: mapped to the percentage they asked for. Cleared on release.
         self.overrides: dict[str, float] = {}
@@ -145,6 +149,7 @@ class ControlEngine:
         self._last_tick = now
 
         temperatures = self.registry.read_temperatures()
+        self._temperatures = temperatures
         fans = self.registry.read_fans()
 
         ctx = EvalContext(
@@ -215,6 +220,55 @@ class ControlEngine:
         reason = curve_errors.get(control.curve_id, "curve could not be evaluated")
         return self.config.settings.failsafe_percent, reason
 
+    def _leave_to_firmware(
+        self,
+        control: Control,
+        rt: ControlRuntime,
+        output: Any,
+        critical: bool,
+        entry: dict[str, Any],
+    ) -> bool:
+        """Hand the output to the firmware while it is cool, and back when not.
+
+        Returns True when the firmware has it this tick. A sensor that cannot
+        be read, or a critical temperature anywhere, always means we take it:
+        the firmware keeping a fan stopped is exactly wrong in either case.
+        """
+
+        if control.firmware_below <= 0:
+            rt.with_firmware = False
+            return False
+
+        temperature = self._temperatures.get(control.firmware_sensor_id)
+        if critical or temperature is None:
+            hand_over = False
+        elif temperature >= control.firmware_below:
+            hand_over = False
+        elif temperature < control.firmware_below - control.firmware_hysteresis:
+            hand_over = True
+        else:
+            hand_over = rt.with_firmware  # in between: keep what we had
+
+        if not hand_over:
+            if rt.with_firmware:
+                # Start the slew limiter from wherever the firmware left the fan
+                # rather than from a speed we last wrote minutes ago.
+                rt.applied_percent = entry.get("hardware_percent") or 0.0
+                rt.kick_until = 0.0
+            rt.with_firmware = False
+            return False
+
+        if output.acquired:
+            try:
+                output.release()
+            except OSError as exc:
+                entry["error"] = str(exc)
+        rt.with_firmware = True
+        entry["with_firmware"] = True
+        entry["requested_percent"] = 0.0
+        entry["applied_percent"] = entry["hardware_percent"] or 0.0
+        return True
+
     def _apply_control(
         self,
         control: Control,
@@ -240,6 +294,7 @@ class ControlEngine:
             "error": "",
             "kicking": False,
             "paused": False,
+            "with_firmware": False,
         }
 
         if output is None:
@@ -270,6 +325,9 @@ class ControlEngine:
                     entry["error"] = str(exc)
             entry["requested_percent"] = 0.0
             entry["applied_percent"] = entry["hardware_percent"] or 0.0
+            return entry
+
+        if self._leave_to_firmware(control, rt, output, critical, entry):
             return entry
 
         requested, error = self._target_percent(control, curve_values, curve_errors)

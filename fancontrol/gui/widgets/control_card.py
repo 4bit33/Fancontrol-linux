@@ -96,6 +96,23 @@ class ControlSettingsDialog(QDialog):
         form.addRow("Speed up limit", self.step_up)
         form.addRow("Slow down limit", self.step_down)
         form.addRow("Fan tachometer", self.fan_sensor)
+
+        self.firmware_below = self._spin(0, 100, control.firmware_below, " °C")
+        self.firmware_below.setSpecialValueText("never")
+        self.firmware_below.setToolTip(
+            "Below this temperature the firmware runs the fan instead - for a\n"
+            "GPU that means its own curve, which can stop the fans at idle.\n"
+            "Taken back 3 °C before it would be handed over again."
+        )
+        self.firmware_sensor = QComboBox()
+        for entry in inventory.get("temperatures", []):
+            self.firmware_sensor.addItem(
+                f"{entry['name']}  ({entry['device']['chip']})", entry["id"]
+            )
+        index = self.firmware_sensor.findData(control.firmware_sensor_id)
+        self.firmware_sensor.setCurrentIndex(max(0, index))
+        form.addRow("Firmware runs it below", self.firmware_below)
+        form.addRow("…measured on", self.firmware_sensor)
         layout.addLayout(form)
 
         if control.calibration:
@@ -145,6 +162,10 @@ class ControlSettingsDialog(QDialog):
         control.step_up = self.step_up.value()
         control.step_down = self.step_down.value()
         control.fan_sensor_id = self.fan_sensor.currentData()
+        control.firmware_below = self.firmware_below.value()
+        control.firmware_sensor_id = (
+            self.firmware_sensor.currentData() if control.firmware_below > 0 else ""
+        )
 
 
 class ControlCard(QFrame):
@@ -321,7 +342,9 @@ class ControlCard(QFrame):
         palette = self.palette()
         note = ""
         colour = ""
-        if entry.get("paused"):
+        if entry.get("with_firmware"):
+            note = "Cool enough: the firmware is running this fan."
+        elif entry.get("paused"):
             note, colour = "Calibrating — the curve is standing down.", "#f67400"
         elif entry.get("error"):
             note, colour = entry["error"], "#da4453"

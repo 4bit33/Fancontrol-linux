@@ -131,7 +131,9 @@ def cmd_status(client, args) -> int:
         percent = entry.get("applied_percent") or 0.0
         rpm = entry.get("rpm")
         note = ""
-        if entry.get("paused"):
+        if entry.get("with_firmware"):
+            note = dim("with the firmware while cool")
+        elif entry.get("paused"):
             note = yellow("calibrating — the curve is standing down")
         elif entry.get("error"):
             note = red(entry["error"])
