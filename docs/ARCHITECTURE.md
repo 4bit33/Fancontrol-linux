@@ -73,14 +73,20 @@ One `ControlEngine.tick()`:
    inputs. Sync curves read the *previous* tick's applied values, which is what
    breaks the otherwise circular dependency between a control and a curve that
    follows it.
-3. For each enabled control, shape the curve's number into the value actually
-   written:
+3. A control with a firmware threshold (`firmware_below`) whose sensor reads
+   below it is handed back to the firmware for this tick and skipped - for a
+   GPU that restores the driver's own curve, which stops the fans at idle.
+   It is taken back at the threshold and handed over again only a few degrees
+   below it, and always taken back if the sensor cannot be read or anything is
+   critical.
+4. For each remaining control, shape the curve's number into the value
+   actually written:
    * add the offset, apply the floor (stop the fan only if that was asked for),
      clamp to the maximum;
    * if the fan was stopped, hold `start_percent` briefly so it actually starts
      turning;
    * limit how fast the value may change, unless we are mid spin-up.
-4. Write it, then check whether the tachometer agrees that the fan is moving.
+5. Write it, then check whether the tachometer agrees that the fan is moving.
 
 ### What happens when things go wrong
 
@@ -92,7 +98,7 @@ One `ControlEngine.tick()`:
 | A control's output has disappeared | Reported; nothing is written |
 | A fan reads 0 rpm while being driven | Flagged as stalled after five ticks |
 | The daemon is stopped | Every `pwm*_enable` is put back to the value the firmware had |
-| The daemon is killed with SIGKILL | The fans stay where they were — the kernel cannot undo that. This is why `TimeoutStopSec` in the unit is generous |
+| The daemon is killed with SIGKILL | Nothing can restore the fans at that moment. Held outputs are recorded in `/run/fancontrold/acquired.json`, so the next start hands them back before doing anything else |
 
 The failsafe is deliberately *high*. A fan running faster than it needs to is
 noisy; a fan that stopped because a sensor went away is a dead chip.
@@ -125,7 +131,28 @@ stable instead of forcing a new D-Bus type every time.
 
 Access is decided by the bus policy in
 `data/dbus/org.fancontrol.Daemon.conf`: the four `Get*` methods are open to
-every local user, and everything else is restricted to the `wheel` group.
+every local user, and everything else is restricted to the administrators'
+group - `wheel`, `sudo` or `admin`. The file grants all three; `install.sh`
+removes the blocks for groups the machine does not have.
+
+## Running as a service
+
+The unit sandboxes the daemon tightly (`ProtectSystem=strict`, a system call
+filter, no capabilities at all), because writing a PWM file needs none of
+that. Two things had to be learned the hard way on real hardware:
+
+* **SELinux decides the daemon's domain by the file systemd executes.** The
+  venv's console script is labelled `lib_t`, which has no transition, so a
+  unit that ran it left the daemon in `init_t` - and from there the policy
+  keeps it away from `/dev/nvidia*`. NVML reported "no permission" however much
+  of the sandbox was relaxed. The unit therefore runs the venv's interpreter,
+  which resolves to `/usr/bin/python3` (`bin_t`) and lands in
+  `unconfined_service_t`. `fanctl doctor` reports the domain.
+* **The NVIDIA driver checks capabilities before setting a fan speed.** With
+  none, `nvmlDeviceSetFanSpeed_v2` refuses even root. Machines with an NVIDIA
+  card get a one-line drop-in restoring the capability set; measured with
+  `tools/nvidia-diagnose.sh`, it is the only one of the unit's settings that
+  gets in the way.
 
 ## Importing a Windows configuration
 
@@ -150,8 +177,14 @@ right. Everything else goes to the user with a ranked list.
 ## Testing
 
 ```bash
-python3 -m pytest
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -e '.[dev,gui,daemon]'
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest
 ```
+
+GitHub Actions runs the suite on Ubuntu and Fedora for every push, and
+`tools/test-install-in-containers.sh` runs `install.sh --program-only` in clean
+Fedora, Ubuntu, Debian, Arch and openSUSE containers.
 
 No real hardware is involved:
 
@@ -166,3 +199,11 @@ No real hardware is involved:
 * `test_dbus_interface.py` asserts the introspection XML dasbus generates,
   which catches signature mistakes that would otherwise only surface when the
   daemon tries to register on the bus.
+* `test_daemon_lifecycle.py` runs the daemon as a real process on a private
+  session bus: it must publish itself, take a fan over, exit promptly on
+  SIGTERM, hand the fan back - and, after a SIGKILL, have the next start hand
+  it back instead.
+
+What the simulator cannot show is timing on real fans. Real fans take seconds
+to change speed and it87 caches readings for 1.5 s, which is why calibration
+waits for a fan to settle rather than pausing for a fixed time.
