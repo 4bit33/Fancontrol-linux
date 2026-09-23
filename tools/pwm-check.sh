@@ -246,29 +246,31 @@ if (( CHANNELS > 0 && WORKING < CHANNELS )); then
     echo "$WORKING of $CHANNELS swept channel(s) changed anything."
 fi
 if (( CHANNELS > 1 && WORKING <= 1 )); then
-    cat <<'ADVICE'
+    cat <<ADVICE
 
 Almost nothing responded, which points at the driver rather than the board:
 with the wrong register map, writes land on channels that are not there.
 
-Before compiling anything, make the driver use the identity you know is right.
-On Gigabyte boards it87 can report an IT8689E as an IT8628E, and the two have
-different maps:
+The driver treats this chip as: $CHIP
+Check that against the chip the board really has. The board's manual or
+"sudo sensors-detect" name it (for example "ITE IT8689E Super IO"), and
+Windows tools such as HWiNFO or FanControl show it too. If it differs,
+make the driver use the right one - the ID is the model's digits, so an
+IT8689E is 0x8689 and an IT8688E is 0x8688:
 
-    lsmod | grep it87                    # a module, or built into the kernel?
+    grep -r force_id /etc/modprobe.d/     # something already forcing one?
 
-  If it is a module:
     sudo modprobe -r it87
-    sudo modprobe it87 force_id=0x8689   # the chip the board really has
+    sudo modprobe it87 force_id=0x<ID>
     sudo ./tools/pwm-check.sh
 
-  If it is built in, the same goes on the kernel command line:
-    sudo grubby --update-kernel=ALL --args="it87.force_id=0x8689"
-
   To keep it across reboots once it works:
-    echo "options it87 force_id=0x8689" | sudo tee /etc/modprobe.d/it87.conf
+    echo "options it87 force_id=0x<ID>" | sudo tee /etc/modprobe.d/it87.conf
 
-If forcing the right ID does not help either, the out-of-tree driver at
+  (If it87 is built into your kernel rather than a module, the same goes on
+  the kernel command line as it87.force_id=0x<ID>.)
+
+If the right ID does not help either, the out-of-tree driver at
 https://github.com/frankcrawford/it87 knows more board variants than the one
 in the kernel.
 ADVICE

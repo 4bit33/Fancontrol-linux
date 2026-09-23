@@ -1,0 +1,50 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# None of the tests touch real hardware: the hwmon ones run against a
+# simulated tree, the GUI under Qt's offscreen platform, and the daemon on a
+# private session bus. So they run the same everywhere.
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-venv python3-gi dbus \
+            libgl1 libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libxcb-cursor0
+      - name: Environment
+        # The system Python, so PyGObject comes from the distribution the way
+        # install.sh does it; everything else from PyPI.
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -q pytest dasbus PySide6-Essentials -e .
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: .venv/bin/python -m pytest -q
+      - name: Shell scripts parse
+        run: for f in install.sh tools/*.sh; do bash -n "$f" || exit 1; done
+
+  fedora:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: System packages
+        run: |
+          dnf install -y -q git python3 python3-gobject python3-dasbus \
+            python3-pyside6 dbus-daemon mesa-libEGL findutils
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -q pytest -e .
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: .venv/bin/python -m pytest -q

@@ -11,7 +11,8 @@ Interface     ``org.fancontrol.Daemon1``
 
 Who may call which method is decided by the bus policy in
 ``data/dbus/org.fancontrol.Daemon.conf``: reading is open to everyone, changing
-the configuration is restricted to the ``wheel`` group.
+the configuration is restricted to the administrators' group (``wheel``,
+``sudo`` or ``admin``, whichever the distribution uses).
 """
 
 # NOTE: this module must not use "from __future__ import annotations".

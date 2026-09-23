@@ -37,8 +37,9 @@ def _unreachable(detail: str) -> str:
     if "permission" in detail.lower() or "denied" in detail.lower():
         return (
             "the daemon refused the request.\n\n"
-            "Changing the fans is restricted to the wheel group. Check with:\n"
-            "  groups | tr ' ' '\\n' | grep -x wheel"
+            "Changing the fans is restricted to the administrators' group -\n"
+            "wheel, sudo or admin, depending on the distribution. Check with:\n"
+            "  id -nG"
         )
     return f"cannot reach the fan control daemon: {detail}"
 
@@ -51,8 +52,9 @@ class DaemonClient:
             from dasbus.connection import SessionMessageBus, SystemMessageBus
         except ImportError as exc:  # pragma: no cover - depends on the system
             raise DaemonError(
-                "dasbus is not installed. Install it with "
-                "'sudo dnf install python3-dasbus'."
+                "dasbus is not installed. Install it from your distribution "
+                "(python3-dasbus on Fedora and Debian), or re-run ./install.sh, "
+                "which fetches it when the distribution has none."
             ) from exc
 
         from .dbus_names import BUS_NAME, OBJECT_PATH

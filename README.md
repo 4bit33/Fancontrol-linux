@@ -92,8 +92,15 @@ cd Fancontrol-linux
 sudo ./install.sh
 ```
 
-Скрипт поставить залежності (`python3-dasbus`, `python3-pyside6`), сам пакет,
-`systemd`-юніт, політику D-Bus і пункт у меню, а потім увімкне демон.
+Скрипт знає `dnf` (Fedora), `apt` (Debian, Ubuntu), `pacman` (Arch) і
+`zypper` (openSUSE). Він поставить із репозиторіїв дистрибутива те, що там є,
+а PySide6 і dasbus, яких у деяких дистрибутивах немає, докачає з PyPI у власне
+оточення програми — системний Python не зачіпається. Далі — `systemd`-юніт,
+політика D-Bus, пункт у меню, і демон увімкнеться.
+
+Потрібен systemd. Змінювати налаштування вентиляторів можуть члени групи
+адміністраторів — `wheel` (Fedora, Arch, openSUSE) або `sudo` (Debian, Ubuntu);
+інсталятор сам бере ту, що є на машині. Дивитись статус може будь-хто.
 
 ### Який вентилятор на якому каналі
 
@@ -185,18 +192,30 @@ echo nct6775 | sudo tee /etc/modules-load.d/fancontrol.conf
 
 На багатьох платах (особливо Gigabyte з чипами ITE — `it8688e`, `it8689e`)
 ACPI тримає ці порти, і драйвер `it87` відмовляється вантажитись із
-`Device or resource busy`. Тоді потрібен параметр ядра:
+`Device or resource busy`. Позаядерна версія драйвера має для цього власний
+параметр, який стосується лише її самої:
 
 ```bash
-sudo grubby --update-kernel=ALL --args="acpi_enforce_resources=lax"
+echo "options it87 ignore_resource_conflict=1" | sudo tee /etc/modprobe.d/it87.conf
 ```
 
-Це знімає захист ядра від одночасного доступу ACPI й драйвера до тих самих
-портів. Зазвичай працює без проблем, але ризик не нульовий — вирішуйте самі.
+Для ядрового драйвера — параметр ядра `acpi_enforce_resources=lax`. Як його
+додати, залежить від дистрибутива:
+
+```bash
+sudo grubby --update-kernel=ALL --args="acpi_enforce_resources=lax"   # Fedora, RHEL
+# Debian, Ubuntu, Arch: дописати в GRUB_CMDLINE_LINUX_DEFAULT у /etc/default/grub,
+# потім  sudo update-grub  (Debian, Ubuntu)
+# або    sudo grub-mkconfig -o /boot/grub/grub.cfg  (Arch)
+```
+
+Обидва знімають захист ядра від одночасного доступу ACPI й драйвера до тих
+самих портів. Зазвичай працює без проблем, але ризик не нульовий — вирішуйте
+самі.
 
 Якщо `it87` не знає вашого чипа, є позаядерна версія з ширшою підтримкою:
-[frankcrawford/it87](https://github.com/frankcrawford/it87) (ставиться через
-`akmod`).
+[frankcrawford/it87](https://github.com/frankcrawford/it87) (інструкція зі
+збирання — у тому репозиторії).
 
 ---
 
@@ -345,15 +364,28 @@ fancontrold` перечитає його.
 ## Розробка
 
 ```bash
-python3 -m pip install -e '.[dev,gui,daemon]'
-python3 -m pytest              # 167 тестів, справжнє залізо не потрібне
+python3 -m venv --system-site-packages .venv     # PyGObject — з дистрибутива
+.venv/bin/pip install -e '.[dev,gui,daemon]'
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest   # справжнє залізо не потрібне
 ```
 
 Тести ганяють криві, імпортер на **справжньому** `userConfig.json` версії 270,
 движок на симуляторі (включно з наскрізним «машина реально охолоджується»),
 сигнатури D-Bus-інтерфейсу, повний життєвий цикл демона на справжній шині
 (запуск, SIGTERM, повернення керування прошивці) і GUI під offscreen-платформою
-Qt.
+Qt. GitHub Actions проганяє їх на кожен пуш на Ubuntu і Fedora.
+
+Інсталятор на різних дистрибутивах перевіряється в чистих контейнерах
+(потрібен podman або `ENGINE=docker`):
+
+```bash
+./tools/test-install-in-containers.sh           # Fedora, Ubuntu, Debian, Arch, openSUSE
+./tools/test-install-in-containers.sh ubuntu    # лише один
+```
+
+У контейнерах немає systemd, тож це перевіряє половину інсталятора, яка й
+відрізняється між дистрибутивами: залежності й саму програму
+(`install.sh --program-only`).
 
 ---
 

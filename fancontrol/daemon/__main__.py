@@ -117,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         log.error(
             "dasbus is not installed, so the D-Bus service cannot be published. "
-            "Install it with 'sudo dnf install python3-dasbus', or run with "
+            "Re-run ./install.sh, which fetches it if the distribution has none, "
+            "or run with "
             "--no-dbus to use the control loop on its own."
         )
         return 1

@@ -102,4 +102,7 @@ def test_the_bus_policy_opens_reading_and_restricts_writing():
     default = text.split('<policy context="default">')[1].split("</policy>")[0]
     for member in ("SetConfig", "SetOverride", "ApplyImport", "Calibrate"):
         assert member not in default, f"{member} must not be open to every user"
-    assert '<policy group="wheel">' in text
+    # Every common administrators' group, since which one exists depends on
+    # the distribution; install.sh drops the ones a machine does not have.
+    for group in ("wheel", "sudo", "admin"):
+        assert f'<policy group="{group}">' in text
