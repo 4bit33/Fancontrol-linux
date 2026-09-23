@@ -27,6 +27,11 @@ from . import state
 log = logging.getLogger(__name__)
 
 
+#: Percentages visited on the way down during calibration. Coarse at the top,
+#: where nothing interesting happens, and fine near the bottom, where fans stop.
+CALIBRATION_STEPS = (100, 80, 60, 50, 40, 35, 30, 25, 20, 15, 10, 5, 0)
+
+
 def ok(**extra: Any) -> dict[str, Any]:
     return {"ok": True, **extra}
 
@@ -49,9 +54,13 @@ class FanControlService:
         self.config = Config()
         self.engine: ControlEngine | None = None
         self.calibration: dict[str, Any] = {}
-        #: Seconds to wait after each PWM step during calibration, so the fan
-        #: has time to reach its new speed before the tachometer is read.
-        self.calibration_settle = 1.5
+        #: Seconds between tachometer reads while waiting for a fan to settle
+        #: during calibration. Must be longer than the driver caches a reading:
+        #: it87 keeps one for 1.5 s, and two reads inside that window return the
+        #: same number, which looks exactly like a fan that has stopped changing.
+        self.calibration_settle = 2.0
+        #: Longest a single calibration step may wait for the fan to settle.
+        self.calibration_max_wait = 30.0
         self._calibration_thread: threading.Thread | None = None
 
         #: Outputs recorded as held, so the file is only rewritten on a change.
@@ -434,6 +443,34 @@ class FanControlService:
             return self.calibration.get(control_id, fail("calibration produced no result"))
         return ok(started=True, control_id=control_id)
 
+    def _settled_rpm(self, fan: Any) -> float:
+        """Read a tachometer until the fan has stopped changing speed.
+
+        Real fans take several seconds to spin up or coast down, and reading
+        after a fixed pause measured where the fan had been rather than where
+        it was going: a first real calibration peaked at 70% and still read
+        530 rpm "at 0%" from momentum alone. So wait for two consecutive
+        readings to agree, within a few percent, twice in a row - once is not
+        enough, because a coarse or cached tachometer can repeat itself while
+        the fan is still accelerating - or for the step's time limit.
+        """
+
+        deadline = time.monotonic() + self.calibration_max_wait
+        time.sleep(self.calibration_settle)
+        previous = fan.read() or 0.0
+        agreeing = 0
+        while time.monotonic() < deadline:
+            time.sleep(self.calibration_settle)
+            current = fan.read() or 0.0
+            if abs(current - previous) <= max(30.0, 0.02 * previous):
+                agreeing += 1
+                if agreeing >= 2:
+                    return current
+            else:
+                agreeing = 0
+            previous = current
+        return previous
+
     def _calibration_problem(self, control_id: str) -> str:
         """Why this control cannot be calibrated, or an empty string."""
 
@@ -471,11 +508,13 @@ class FanControlService:
 
         try:
             output.acquire()
+            # Start from a known state: at full speed and done accelerating.
+            output.set_percent(100.0)
+            self._settled_rpm(fan)
             # Ramp down: the lowest percentage at which the fan still turns.
-            for percent in range(100, -1, -5):
+            for percent in CALIBRATION_STEPS:
                 output.set_percent(float(percent))
-                time.sleep(self.calibration_settle)
-                rpm = fan.read() or 0.0
+                rpm = self._settled_rpm(fan)
                 samples.append({"percent": float(percent), "rpm": rpm})
                 self.calibration[control_id].update(percent=float(percent), samples=list(samples))
                 if rpm <= 0 and stop_percent is None:
@@ -483,11 +522,10 @@ class FanControlService:
                     break
             # Ramp up: the lowest percentage at which it starts from standstill.
             output.set_percent(0.0)
-            time.sleep(self.calibration_settle * 1.5)
-            for percent in range(0, 101, 5):
+            self._settled_rpm(fan)
+            for percent in reversed(CALIBRATION_STEPS):
                 output.set_percent(float(percent))
-                time.sleep(self.calibration_settle)
-                rpm = fan.read() or 0.0
+                rpm = self._settled_rpm(fan)
                 self.calibration[control_id].update(percent=float(percent))
                 if rpm > 0:
                     start_percent = float(percent)

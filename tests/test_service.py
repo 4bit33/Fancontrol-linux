@@ -364,3 +364,26 @@ def test_a_control_with_no_tachometer_is_refused_before_starting(service):
     assert result["ok"] is False
     assert "tachometer" in result["error"]
     assert control.id not in service.engine.paused
+
+
+def test_calibration_waits_for_a_slow_fan_to_settle(service):
+    """Real fans coast. Reading after a fixed pause measured momentum instead.
+
+    On the first real run a fan peaked at "70%" and still read 530 rpm "at 0%",
+    because each reading was taken while it was still slowing down from the
+    step before.
+    """
+
+    class CoastingFan:
+        def __init__(self, readings):
+            self.readings = list(readings)
+
+        def read(self):
+            return self.readings.pop(0) if len(self.readings) > 1 else self.readings[0]
+
+    service.calibration_settle = 0.0
+    fan = CoastingFan([2376, 2000, 1700, 1500, 1400, 1380, 1375])
+    assert service._settled_rpm(fan) == pytest.approx(1380, abs=10)
+
+    stopping = CoastingFan([530, 300, 120, 0, 0])
+    assert service._settled_rpm(stopping) == 0

@@ -209,7 +209,7 @@ def cmd_disable(client, args) -> int:
 
 def cmd_calibrate(client, args) -> int:
     control_id = _resolve_control(client, args.control)
-    print(dim("stepping the fan up and down, this takes about a minute ..."))
+    print(dim("stepping the fan up and down and waiting for it to settle at each step, a few minutes ..."))
     result = client.calibrate(control_id)
     if not result.get("ok"):
         print(red(result.get("error", "calibration failed")))
@@ -220,7 +220,8 @@ def cmd_calibrate(client, args) -> int:
         import time as _time
 
         last = -1.0
-        for _ in range(600):
+        # Each step waits for the fan to settle, so allow a generous 20 minutes.
+        for _ in range(2400):
             _time.sleep(0.5)
             report = (client.status().get("calibration") or {}).get(control_id, {})
             if report.get("state") == "running":
