@@ -124,6 +124,17 @@ for module in it87 nct6775 nct6683; do
         printf '    %-24s %s\n' "$(basename "$param")" "$(cat "$param" 2>/dev/null || echo '?')"
     done
 done
+# A forced chip ID overrides whatever the driver detects, so it is the first
+# thing to look at when the chip name is not what Windows or the board says.
+forced="$(grep -hs -E '^\s*options\s+(it87|nct6775|nct6683)\b' /etc/modprobe.d/*.conf /usr/lib/modprobe.d/*.conf)"
+if [[ -n "$forced" ]]; then
+    echo "  options from modprobe.d:"
+    echo "$forced" | sed 's/^/    /'
+    if echo "$forced" | grep -q force_id; then
+        echo "    force_id overrides detection: if it names the wrong chip, the"
+        echo "    driver uses the wrong register map and most channels do nothing."
+    fi
+fi
 if command -v dmesg >/dev/null; then
     detection="$(dmesg 2>/dev/null | grep -iE 'it87|nct67' | tail -8)"
     [[ -n "$detection" ]] && { echo "  what the driver said when it loaded:"; echo "$detection" | sed 's/^/    /'; }
@@ -141,10 +152,9 @@ if command -v dmesg >/dev/null; then
         echo
         printf '  \033[31m%s\033[0m\n' "The driver has identified the same chip more than one way:"
         echo "$conflicts"
-        echo "    Only the first, at boot, was made with the chip in a known state."
-        echo "    Reboot and run this again before changing anything else: the"
-        echo "    wrong ID means the wrong register map, which is enough on its"
-        echo "    own to explain channels that will not respond."
+        echo "    A different driver or a force_id option was in effect for one of"
+        echo "    them. The wrong ID means the wrong register map, which is enough"
+        echo "    on its own to explain channels that will not respond."
     fi
 fi
 echo
@@ -249,7 +259,7 @@ different maps:
 
   If it is a module:
     sudo modprobe -r it87
-    sudo modprobe it87 force_id=0x8689   # use the ID dmesg showed at boot
+    sudo modprobe it87 force_id=0x8689   # the chip the board really has
     sudo ./tools/pwm-check.sh
 
   If it is built in, the same goes on the kernel command line:

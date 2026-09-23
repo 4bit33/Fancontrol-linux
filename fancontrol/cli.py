@@ -507,6 +507,22 @@ def cmd_doctor(client, args) -> int:
         note("fancontrold.service is not installed yet (sudo ./install.sh)")
     elif state == "active":
         good("fancontrold.service is running")
+        # SELinux picks the daemon's domain from the file systemd executes. In
+        # init_t - what an unlabelled venv script gets - it cannot reach the
+        # NVIDIA device nodes, which NVML reports as "no permission".
+        pid = systemctl("show", "fancontrold.service", "-p", "MainPID", "--value")
+        try:
+            domain = Path(f"/proc/{pid}/attr/current").read_text().strip("\x00\n ")
+        except (OSError, ValueError):
+            domain = ""
+        if ":init_t:" in domain:
+            bad(
+                f"the daemon runs in the SELinux domain init_t ({domain})",
+                "It cannot reach /dev/nvidia* from there. Reinstall so the unit\n"
+                "starts it through the interpreter:  sudo ./install.sh",
+            )
+        elif domain and domain != "unconfined":
+            note(f"SELinux domain: {domain}")
     elif state == "failed":
         bad(
             "fancontrold.service failed to start",

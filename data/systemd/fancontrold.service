@@ -7,7 +7,14 @@ Requires=dbus.service
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/fancontrold
+# Start the interpreter rather than the console script. SELinux picks a
+# service's domain from the label of the file systemd executes: the script in
+# the venv is lib_t, which has no transition, so the daemon stayed in init_t and
+# the policy kept it away from /dev/nvidia* - NVML reported "no permission" no
+# matter which sandbox settings were relaxed. The interpreter resolves to
+# /usr/bin/python3 (bin_t), which lands in unconfined_service_t like any other
+# service.
+ExecStart=/usr/lib/fancontrol-linux/bin/python3 -m fancontrol.daemon
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
