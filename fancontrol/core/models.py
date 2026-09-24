@@ -93,6 +93,9 @@ class BaseCurve:
     #: curve, where the output is flat anyway and holding it back only delays
     #: the fans for no benefit.
     ignore_hysteresis_at_limits: bool = False
+    #: Left out of the window's curve grid. Only the display: a hidden curve
+    #: still drives its fans.
+    hidden: bool = False
 
     def sensor_ids(self) -> list[str]:
         """Temperature sensors this curve reads directly."""
@@ -363,6 +366,9 @@ class Config:
     controls: list[Control] = field(default_factory=list)
     #: Friendly names the user gave to hardware sensors, keyed by sensor id.
     sensor_names: dict[str, str] = field(default_factory=dict)
+    #: Sensors the user does not want to see in the window. Curves can still
+    #: read them.
+    hidden_sensors: list[str] = field(default_factory=list)
 
     def curve_by_id(self, curve_id: str) -> BaseCurve | None:
         for curve in self.curves:
@@ -383,6 +389,7 @@ class Config:
             "curves": [c.to_dict() for c in self.curves],
             "controls": [c.to_dict() for c in self.controls],
             "sensor_names": dict(self.sensor_names),
+            "hidden_sensors": list(self.hidden_sensors),
         }
 
     @classmethod
@@ -393,6 +400,7 @@ class Config:
             curves=[curve_from_dict(c) for c in raw.get("curves", [])],
             controls=[Control.from_dict(c) for c in raw.get("controls", [])],
             sensor_names=dict(raw.get("sensor_names", {})),
+            hidden_sensors=[str(s) for s in raw.get("hidden_sensors", [])],
         )
 
 

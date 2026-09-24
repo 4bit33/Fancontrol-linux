@@ -283,3 +283,51 @@ def test_no_card_is_narrower_than_its_contents(window):
             assert card.width() >= card.sizeHint().width()
     widest = max(card.width() for section in window._sections() for card in section.cards())
     assert window.minimumWidth() > widest
+
+
+def _saved(window):
+    window._push_timer.stop()
+    window._push_config()
+    return window.proxy.config()
+
+
+def test_a_hidden_sensor_leaves_the_grid_and_is_remembered(qapp, window):
+    sensor_id = next(iter(window.sensor_cards))
+    window._set_hidden("sensor", sensor_id, True)
+    qapp.processEvents()
+    assert sensor_id not in window.sensor_cards
+    assert window.temperatures_section.show_hidden.isVisibleTo(window)
+    assert _saved(window)["hidden_sensors"] == [sensor_id]
+
+    # "Show hidden" brings it back, dimmed, and it can be un-hidden from there.
+    window.temperatures_section.show_hidden.setChecked(True)
+    assert window.sensor_cards[sensor_id].graphicsEffect() is not None
+    window._set_hidden("sensor", sensor_id, False)
+    qapp.processEvents()
+    assert window.sensor_cards[sensor_id].graphicsEffect() is None
+    assert _saved(window)["hidden_sensors"] == []
+
+
+def test_hiding_a_curve_does_not_change_what_the_fans_do(qapp, window):
+    curve = window.config.curves[0]
+    users = [c.id for c in window.config.controls if c.curve_id == curve.id]
+    window._set_hidden("curve", curve.id, True)
+    qapp.processEvents()
+    assert curve.id not in window.curve_cards
+    saved = _saved(window)
+    assert next(c for c in saved["curves"] if c["id"] == curve.id)["hidden"] is True
+    assert [c["id"] for c in saved["controls"] if c["curve_id"] == curve.id] == users
+
+
+def test_a_hidden_fan_can_be_brought_back(qapp, window):
+    control = window.config.controls[0]
+    window._set_hidden("control", control.id, True)
+    qapp.processEvents()
+    assert control.id not in window.cards
+    window.controls_section.show_hidden.setChecked(True)
+    assert control.id in window.cards
+    window._set_hidden("control", control.id, False)
+    qapp.processEvents()
+    # With nothing left hidden the switch turns itself off.
+    assert not window.controls_section.show_hidden.isChecked()
+    assert control.id in window.cards

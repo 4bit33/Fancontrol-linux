@@ -175,6 +175,10 @@ remove one. ⚙ on a fan's card opens its minimum, start, rate limits and the
 temperature below which the firmware runs it. Double-click a sensor to rename
 it.
 
+Right-click any card to hide it — an unused curve, a sensor you never look
+at, an empty fan header. Hiding only tidies the window: a hidden curve still
+drives its fans. **Show hidden** in a section's header brings them back.
+
 The window speaks English, or Ukrainian on a Ukrainian desktop. To choose
 yourself: `fancontrol-gui --lang uk` or `FANCONTROL_LANG=en`. Adding a
 language is one file in `fancontrol/gui/locales/`; `tests/test_i18n.py`

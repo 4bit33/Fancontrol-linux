@@ -10,6 +10,9 @@
 * The window is translated: English, and Ukrainian on a Ukrainian desktop,
   including Qt's own buttons and dialogs. `--lang` or `FANCONTROL_LANG`
   choose explicitly.
+* Any card — fan, curve or sensor — can be hidden from its right-click menu,
+  and brought back with "Show hidden" in the section header. Hiding changes
+  only the window, never what the fans do.
 
 ## 1.0.0 — 2026-09-23
 

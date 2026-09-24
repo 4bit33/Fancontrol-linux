@@ -182,7 +182,17 @@ CATALOG: dict[str, str] = {
         "Виміряно: крутиться від {percent}% і вище, до {rpm} об/хв.",
 
     # -- curve cards ----------------------------------------------------
-    "Click to edit": "Натисніть, щоб змінити",
+    "Click to edit, right-click for more": "Клацніть, щоб змінити; права кнопка — інші дії",
+    "Show the cards you hid, so you can bring them back":
+        "Показати приховані картки, щоб їх можна було повернути",
+    "Show hidden ({count})": "Показати приховані ({count})",
+    "Hide": "Приховати",
+    "Show again": "Показувати знову",
+    "Rename…": "Перейменувати…",
+    "Edit…": "Змінити…",
+    "Remove…": "Видалити…",
+    "Hidden. “Show hidden” in the section header brings it back.":
+        "Приховано. Повернути можна кнопкою «Показати приховані» в заголовку розділу.",
     "Edit this curve": "Змінити цю криву",
     "Remove this curve": "Видалити цю криву",
     "no sensor chosen": "датчик не вибрано",
@@ -193,7 +203,8 @@ CATALOG: dict[str, str] = {
     "holds {temperature} °C": "тримає {temperature} °C",
     "Drives: {fans}": "Керує: {fans}",
     "unavailable": "недоступно",
-    "{id}\nDouble-click to rename": "{id}\nДвічі клацніть, щоб перейменувати",
+    "{id}\nDouble-click to rename, right-click to hide":
+        "{id}\nДвічі клацніть, щоб перейменувати; права кнопка — приховати",
 
     # -- curve types ----------------------------------------------------
     "Graph": "Графік",

@@ -99,7 +99,13 @@ class Card(QFrame):
 
 
 class Section(QWidget):
-    """A titled group of cards that wraps to the window's width."""
+    """A titled group of cards that wraps to the window's width.
+
+    Cards the user hid stay out of the grid; the "show hidden" switch in the
+    header brings them back, dimmed, so they can be un-hidden.
+    """
+
+    showHiddenToggled = Signal(bool)
 
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -112,8 +118,17 @@ class Section(QWidget):
         self.title.setFont(bold_font(self, 3))
         self.count = QLabel("")
         self.count.setEnabled(False)
+        self.show_hidden = QToolButton()
+        self.show_hidden.setCheckable(True)
+        self.show_hidden.setAutoRaise(True)
+        self.show_hidden.setIcon(QIcon.fromTheme("view-visible"))
+        self.show_hidden.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.show_hidden.setToolTip(tr("Show the cards you hid, so you can bring them back"))
+        self.show_hidden.toggled.connect(self.showHiddenToggled)
+        self.show_hidden.hide()
         header.addWidget(self.title)
         header.addWidget(self.count)
+        header.addWidget(self.show_hidden)
         header.addStretch(1)
         self.actions = header
         outer.addLayout(header)
@@ -159,8 +174,18 @@ class Section(QWidget):
         for card in cards:
             card.setFixedWidth(width)
 
-    def set_count(self, count: int) -> None:
+    def set_count(self, count: int, hidden: int = 0) -> None:
         self.count.setText(f"({count})")
+        self.show_hidden.setText(tr("Show hidden ({count})", count=hidden))
+        # Keep the switch while it is on, so the last card can be un-hidden
+        # without the switch vanishing under the mouse.
+        self.show_hidden.setVisible(hidden > 0 or self.show_hidden.isChecked())
+        if not hidden and self.show_hidden.isChecked():
+            self.show_hidden.setChecked(False)
+            self.show_hidden.hide()
+
+    def showing_hidden(self) -> bool:
+        return self.show_hidden.isChecked()
 
 
 class CurveCard(Card):
@@ -174,7 +199,7 @@ class CurveCard(Card):
         super().__init__(CURVE_CARD_WIDTH, parent)
         self.curve = curve
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip(tr("Click to edit"))
+        self.setToolTip(tr("Click to edit, right-click for more"))
         self.clicked.connect(lambda: self.editRequested.emit(self.curve.id))
 
         layout = QVBoxLayout(self)
@@ -304,7 +329,7 @@ class SensorCard(Card):
         super().__init__(SENSOR_CARD_WIDTH, parent)
         self.sensor_id = sensor_id
         self.kind = kind
-        self.setToolTip(tr("{id}\nDouble-click to rename", id=sensor_id))
+        self.setToolTip(tr("{id}\nDouble-click to rename, right-click to hide", id=sensor_id))
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 10, 0)

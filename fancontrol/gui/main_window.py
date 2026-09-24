@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGraphicsOpacityEffect,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -160,6 +161,10 @@ class MainWindow(QMainWindow):
         for section in (self.controls_section, self.curves_section,
                         self.temperatures_section, self.speeds_section):
             layout.addWidget(section)
+        self.controls_section.showHiddenToggled.connect(lambda _on: self._rebuild_controls())
+        self.curves_section.showHiddenToggled.connect(lambda _on: self._rebuild_curves())
+        self.temperatures_section.showHiddenToggled.connect(lambda _on: self._rebuild_sensors())
+        self.speeds_section.showHiddenToggled.connect(lambda _on: self._rebuild_sensors())
         layout.addStretch(1)
         scroll.setWidget(page)
 
@@ -300,21 +305,24 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
 
     def _rebuild_controls(self) -> None:
-        self.controls_section.clear()
+        section = self.controls_section
+        section.clear()
         self.cards.clear()
 
-        visible = [c for c in self.config.controls if not c.hidden]
-        for control in visible:
+        shown = [c for c in self.config.controls if section.showing_hidden() or not c.hidden]
+        for control in shown:
             card = ControlCard(control, self.config, self.inventory)
             card.configEdited.connect(self._on_control_edited)
             card.calibrateRequested.connect(self._calibrate)
             card.editCurveRequested.connect(self._edit_curve_by_id)
-            self.controls_section.add(card)
+            self._offer_menu(card, "control", control.id, control.hidden)
+            section.add(card)
             self.cards[control.id] = card
-        self.controls_section.set_count(len(visible))
-        self.controls_section.equalize()
+        hidden = sum(1 for c in self.config.controls if c.hidden)
+        section.set_count(len(self.config.controls) - hidden, hidden)
+        section.equalize()
 
-        if not visible:
+        if not self.config.controls:
             empty = QLabel(tr(
                 "No controllable fans were found.\n\n"
                 "On most desktop boards the super-I/O driver has to be loaded "
@@ -324,22 +332,27 @@ class MainWindow(QMainWindow):
             empty.setWordWrap(True)
             empty.setEnabled(False)
             empty.setFixedWidth(520)
-            self.controls_section.add(empty)
+            section.add(empty)
 
     def _rebuild_curves(self) -> None:
-        self.curves_section.clear()
+        section = self.curves_section
+        section.clear()
         self.curve_cards.clear()
         for curve in self.config.curves:
+            if curve.hidden and not section.showing_hidden():
+                continue
             card = CurveCard(curve, self.config, self.inventory)
             card.editRequested.connect(self._edit_curve_by_id)
             card.removeRequested.connect(self._remove_curve)
-            self.curves_section.add(card)
+            self._offer_menu(card, "curve", curve.id, curve.hidden)
+            section.add(card)
             self.curve_cards[curve.id] = card
         add = AddCard(tr("Add curve"), CURVE_CARD_WIDTH, 110)
         add.clicked.connect(self._add_curve)
-        self.curves_section.add(add)
-        self.curves_section.set_count(len(self.config.curves))
-        self.curves_section.equalize()
+        section.add(add)
+        hidden = sum(1 for c in self.config.curves if c.hidden)
+        section.set_count(len(self.config.curves) - hidden, hidden)
+        section.equalize()
         if self.latest_status:
             for card in self.curve_cards.values():
                 card.update_status(self.latest_status)
@@ -349,22 +362,100 @@ class MainWindow(QMainWindow):
             section.clear()
         self.sensor_cards.clear()
         names = self.config.sensor_names
+        hidden_ids = set(self.config.hidden_sensors)
 
         for kind, section, key in (
             ("temperature", self.temperatures_section, "temperatures"),
             ("fan", self.speeds_section, "fans"),
         ):
             entries = self.inventory.get(key, [])
+            hidden = 0
             for entry in entries:
+                is_hidden = entry["id"] in hidden_ids
+                hidden += is_hidden
+                if is_hidden and not section.showing_hidden():
+                    continue
                 card = SensorCard(
                     entry["id"], names.get(entry["id"]) or entry["name"],
                     entry.get("device", {}).get("label", ""), kind,
                 )
                 card.renameRequested.connect(self._rename_sensor)
+                self._offer_menu(card, "sensor", entry["id"], is_hidden)
                 section.add(card)
                 self.sensor_cards[entry["id"]] = card
-            section.set_count(len(entries))
+            section.set_count(len(entries) - hidden, hidden)
             section.equalize()
+        if self.latest_status:
+            self._on_status(self.latest_status)
+
+    # ------------------------------------------------------------------
+    # hiding cards
+
+    def _offer_menu(self, card: QWidget, kind: str, item_id: str, hidden: bool) -> None:
+        """Right-click on a card: hide it, and whatever else fits the kind."""
+
+        card.setContextMenuPolicy(Qt.CustomContextMenu)
+        card.customContextMenuRequested.connect(
+            lambda pos: self._card_menu(card, kind, item_id, pos)
+        )
+        if hidden:
+            # Shown only because "show hidden" is on: dim it, so it is clear
+            # it will go away again.
+            effect = QGraphicsOpacityEffect(card)
+            effect.setOpacity(0.45)
+            card.setGraphicsEffect(effect)
+            card.setToolTip(tr("Hidden. “Show hidden” in the section header brings it back."))
+
+    def _card_menu(self, card: QWidget, kind: str, item_id: str, pos) -> None:
+        hidden = self._is_hidden(kind, item_id)
+        menu = QMenu(self)
+        if kind == "curve":
+            menu.addAction(QIcon.fromTheme("document-edit"), tr("Edit…"),
+                           lambda: self._edit_curve_by_id(item_id))
+        if kind == "sensor":
+            menu.addAction(QIcon.fromTheme("edit-rename"), tr("Rename…"),
+                           lambda: self._rename_sensor(item_id))
+        if hidden:
+            menu.addAction(QIcon.fromTheme("view-visible"), tr("Show again"),
+                           lambda: self._set_hidden(kind, item_id, False))
+        else:
+            menu.addAction(QIcon.fromTheme("view-hidden"), tr("Hide"),
+                           lambda: self._set_hidden(kind, item_id, True))
+        if kind == "curve":
+            menu.addSeparator()
+            menu.addAction(QIcon.fromTheme("edit-delete"), tr("Remove…"),
+                           lambda: self._remove_curve(item_id))
+        menu.exec(card.mapToGlobal(pos))
+
+    def _is_hidden(self, kind: str, item_id: str) -> bool:
+        if kind == "control":
+            control = self.config.control_by_id(item_id)
+            return bool(control and control.hidden)
+        if kind == "curve":
+            curve = self.config.curve_by_id(item_id)
+            return bool(curve and curve.hidden)
+        return item_id in self.config.hidden_sensors
+
+    def _set_hidden(self, kind: str, item_id: str, hidden: bool) -> None:
+        """Hide or show a card. Only the window changes; the fans do not."""
+
+        if kind == "control":
+            control = self.config.control_by_id(item_id)
+            if control is not None:
+                control.hidden = hidden
+            rebuild = self._rebuild_controls
+        elif kind == "curve":
+            curve = self.config.curve_by_id(item_id)
+            if curve is not None:
+                curve.hidden = hidden
+            rebuild = self._rebuild_curves
+        else:
+            ids = [s for s in self.config.hidden_sensors if s != item_id]
+            self.config.hidden_sensors = ids + [item_id] if hidden else ids
+            rebuild = self._rebuild_sensors
+        self._schedule_push()
+        # The card that asked is still on the stack; rebuild once it returns.
+        QTimer.singleShot(0, rebuild)
 
     def _reload_control_cards(self) -> None:
         for card in self.cards.values():
