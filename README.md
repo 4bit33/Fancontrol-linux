@@ -163,14 +163,22 @@ sudo ./install.sh --uninstall        # remove it (the configuration stays in /et
 fancontrol-gui
 ```
 
-Fans on the left, curves in the middle, sensors on the right. The
-**Fan control on** switch in the toolbar hands every fan back to the
-firmware — handy for checking whether a problem is in your curve.
+One page of cards, laid out like FanControl: **Controls** (a card per fan),
+**Curves** (a card per curve with a small graph and what it outputs right now;
+click one to edit it, or the dashed card to add one), then **Temperatures**
+and **Fan speeds**. The **Fan control on** switch in the toolbar hands every
+fan back to the firmware — handy for checking whether a problem is in your
+curve.
 
 On the graph: drag a point to move it, double-click to add one, right-click to
 remove one. ⚙ on a fan's card opens its minimum, start, rate limits and the
 temperature below which the firmware runs it. Double-click a sensor to rename
 it.
+
+The window speaks English, or Ukrainian on a Ukrainian desktop. To choose
+yourself: `fancontrol-gui --lang uk` or `FANCONTROL_LANG=en`. Adding a
+language is one file in `fancontrol/gui/locales/`; `tests/test_i18n.py`
+tells you which strings are still missing.
 
 ### The terminal
 

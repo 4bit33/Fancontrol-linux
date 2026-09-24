@@ -97,23 +97,22 @@ def test_a_card_is_built_for_every_control(window):
     assert all(card.name.text() for card in cards)
 
 
-def test_curves_and_sensors_are_listed(window):
-    assert window.curve_list.count() == len(window.config.curves)
-    assert window.sensors.tree.topLevelItemCount() > 0
+def test_curves_and_sensors_get_cards(window):
+    assert set(window.curve_cards) == {curve.id for curve in window.config.curves}
+    assert window.sensor_cards
+    # The curve grid ends with the "add curve" card.
+    assert window.curves_section.flow.count() == len(window.config.curves) + 1
 
 
-def test_status_reaches_the_cards_and_the_sensor_panel(window):
+def test_status_reaches_every_card(window):
     status = window.proxy.status()
     window._on_status(status)
 
-    card = next(c for c in window.cards.values() if isinstance(c, ControlCard))
+    card = next(iter(window.cards.values()))
     assert card.reading.text().endswith("%")
-    # Every sensor row should carry a real reading rather than the placeholder.
-    readings = []
-    for index in range(window.sensors.tree.topLevelItemCount()):
-        group = window.sensors.tree.topLevelItem(index)
-        readings += [group.child(i).text(1) for i in range(group.childCount())]
+    readings = [card.value.text() for card in window.sensor_cards.values()]
     assert any("°C" in text for text in readings)
+    assert any(card.reading.text().endswith("%") for card in window.curve_cards.values())
 
 
 def test_enabling_a_control_reaches_the_service(window):
@@ -169,11 +168,23 @@ def test_a_curve_still_in_use_is_not_removed(window, monkeypatch):
         "fancontrol.gui.main_window.QMessageBox.information",
         lambda *args, **kwargs: shown.append(args[2]),
     )
-    window.curve_list.setCurrentRow(0)
     before = len(window.config.curves)
-    window._remove_selected_curve()
+    window._remove_curve(window.config.curves[0].id)
     assert len(window.config.curves) == before
-    assert shown and "still in use" in shown[0]
+    assert shown and "still used by" in shown[0]
+
+
+def test_the_window_speaks_the_chosen_language(qapp, window):
+    from fancontrol.gui import i18n
+
+    i18n.set_language("uk")
+    try:
+        translated = MainWindow(window.proxy)
+        assert translated.controls_section.title.text() == "Вентилятори"
+        assert translated.action_enabled.text().startswith("Керування")
+        translated.close()
+    finally:
+        i18n.set_language("en")
 
 
 # ----------------------------------------------------------------------

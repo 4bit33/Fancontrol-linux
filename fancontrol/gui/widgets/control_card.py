@@ -24,8 +24,11 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.models import Config, Control
+from ..i18n import tr
 
 MANUAL = "__manual__"
+
+CONTROL_CARD_WIDTH = 360
 
 
 class ControlSettingsDialog(QDialog):
@@ -33,7 +36,7 @@ class ControlSettingsDialog(QDialog):
 
     def __init__(self, control: Control, config: Config, inventory: dict, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"{control.name} — settings")
+        self.setWindowTitle(tr("{name} — settings", name=control.name))
         self._control = control
 
         layout = QVBoxLayout(self)
@@ -42,67 +45,67 @@ class ControlSettingsDialog(QDialog):
 
         self.min_percent = self._spin(0, 100, control.min_percent, " %")
         self.min_percent.setToolTip(
-            "The fan never runs slower than this while it is running at all.\n"
-            "Set it above the speed at which the fan stalls."
+            tr("The fan never runs slower than this while it is running at all.\n"
+            "Set it above the speed at which the fan stalls.")
         )
         self.max_percent = self._spin(0, 100, control.max_percent, " %")
         self.offset = self._spin(-50, 50, control.offset_percent, " %")
-        self.offset.setToolTip("Added to whatever the curve asks for.")
+        self.offset.setToolTip(tr("Added to whatever the curve asks for."))
 
-        self.allow_stop = QCheckBox("Let the fan stop completely")
+        self.allow_stop = QCheckBox(tr("Let the fan stop completely"))
         self.allow_stop.setChecked(control.allow_stop)
         self.allow_stop.setToolTip(
-            "When the curve asks for less than the stop point, switch the fan\n"
-            "off instead of holding the minimum."
+            tr("When the curve asks for less than the stop point, switch the fan\n"
+            "off instead of holding the minimum.")
         )
 
         self.stop_percent = self._spin(0, 100, control.stop_percent, " %")
         self.stop_percent.setToolTip(
-            "Below this the fan is switched off rather than run slowly.\n"
+            tr("Below this the fan is switched off rather than run slowly.\n"
             "0 uses the minimum speed as the threshold. Run Calibrate to\n"
-            "measure where this fan actually stops."
+            "measure where this fan actually stops.")
         )
 
         self.start_percent = self._spin(0, 100, control.start_percent, " %")
         self.start_percent.setToolTip(
-            "A fan that has stopped needs more than its running minimum to start\n"
-            "turning. Run Calibrate to measure this."
+            tr("A fan that has stopped needs more than its running minimum to start\n"
+            "turning. Run Calibrate to measure this.")
         )
         self.start_duration = self._spin(0, 30, control.start_duration, " s", decimals=1)
 
         self.step_up = self._spin(0, 100, control.step_up, " %/s")
-        self.step_up.setToolTip("How fast the fan may speed up. 0 means instantly.")
+        self.step_up.setToolTip(tr("How fast the fan may speed up. 0 means instantly."))
         self.step_down = self._spin(0, 100, control.step_down, " %/s")
-        self.step_down.setToolTip("How fast the fan may slow down. 0 means instantly.")
+        self.step_down.setToolTip(tr("How fast the fan may slow down. 0 means instantly."))
 
         self.fan_sensor = QComboBox()
-        self.fan_sensor.addItem("— none —", "")
+        self.fan_sensor.addItem(tr("— none —"), "")
         for entry in inventory.get("fans", []):
             self.fan_sensor.addItem(f"{entry['name']}  ({entry['device']['chip']})", entry["id"])
         index = self.fan_sensor.findData(control.fan_sensor_id)
         self.fan_sensor.setCurrentIndex(max(0, index))
         self.fan_sensor.setToolTip(
-            "The tachometer on the same header. Used to show the RPM and to warn\n"
-            "when the fan stops while being driven."
+            tr("The tachometer on the same header. Used to show the RPM and to warn\n"
+            "when the fan stops while being driven.")
         )
 
-        form.addRow("Minimum speed", self.min_percent)
-        form.addRow("Maximum speed", self.max_percent)
-        form.addRow("Offset", self.offset)
+        form.addRow(tr("Minimum speed"), self.min_percent)
+        form.addRow(tr("Maximum speed"), self.max_percent)
+        form.addRow(tr("Offset"), self.offset)
         form.addRow("", self.allow_stop)
-        form.addRow("Stop below", self.stop_percent)
-        form.addRow("Start at", self.start_percent)
-        form.addRow("Start for", self.start_duration)
-        form.addRow("Speed up limit", self.step_up)
-        form.addRow("Slow down limit", self.step_down)
-        form.addRow("Fan tachometer", self.fan_sensor)
+        form.addRow(tr("Stop below"), self.stop_percent)
+        form.addRow(tr("Start at"), self.start_percent)
+        form.addRow(tr("Start for"), self.start_duration)
+        form.addRow(tr("Speed up limit"), self.step_up)
+        form.addRow(tr("Slow down limit"), self.step_down)
+        form.addRow(tr("Fan tachometer"), self.fan_sensor)
 
         self.firmware_below = self._spin(0, 100, control.firmware_below, " °C")
-        self.firmware_below.setSpecialValueText("never")
+        self.firmware_below.setSpecialValueText(tr("never"))
         self.firmware_below.setToolTip(
-            "Below this temperature the firmware runs the fan instead - for a\n"
+            tr("Below this temperature the firmware runs the fan instead - for a\n"
             "GPU that means its own curve, which can stop the fans at idle.\n"
-            "Taken back 3 °C before it would be handed over again."
+            "Taken back 3 °C before it would be handed over again.")
         )
         self.firmware_sensor = QComboBox()
         for entry in inventory.get("temperatures", []):
@@ -111,8 +114,8 @@ class ControlSettingsDialog(QDialog):
             )
         index = self.firmware_sensor.findData(control.firmware_sensor_id)
         self.firmware_sensor.setCurrentIndex(max(0, index))
-        form.addRow("Firmware runs it below", self.firmware_below)
-        form.addRow("…measured on", self.firmware_sensor)
+        form.addRow(tr("Firmware runs it below"), self.firmware_below)
+        form.addRow(tr("…measured on"), self.firmware_sensor)
         layout.addLayout(form)
 
         if control.calibration:
@@ -136,11 +139,13 @@ class ControlSettingsDialog(QDialog):
         spinning = [percent for percent, rpm in samples if rpm > 0]
         top = max(rpm for _percent, rpm in samples)
         if not spinning:
-            return "Measured: never turned at any speed."
+            return tr("Measured: never turned at any speed.")
         lowest = min(spinning)
         if lowest <= min(percent for percent, _rpm in samples):
-            return f"Measured: turns even at {lowest:.0f}%, up to {top:.0f} rpm."
-        return f"Measured: turns from {lowest:.0f}% upwards, up to {top:.0f} rpm."
+            return tr("Measured: turns even at {percent}%, up to {rpm} rpm.",
+                      percent=f"{lowest:.0f}", rpm=f"{top:.0f}")
+        return tr("Measured: turns from {percent}% upwards, up to {rpm} rpm.",
+                  percent=f"{lowest:.0f}", rpm=f"{top:.0f}")
 
     @staticmethod
     def _spin(low, high, value, suffix, decimals=0) -> QDoubleSpinBox:
@@ -186,6 +191,8 @@ class ControlCard(QFrame):
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setObjectName("controlCard")
+        # Cards sit in a wrapping grid, so they all keep one width.
+        self.setFixedWidth(CONTROL_CARD_WIDTH)
 
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 10, 12, 10)
@@ -193,7 +200,7 @@ class ControlCard(QFrame):
 
         self.enabled = QCheckBox()
         self.enabled.setChecked(control.enabled)
-        self.enabled.setToolTip("Let this program drive this fan")
+        self.enabled.setToolTip(tr("Let this program drive this fan"))
         self.enabled.toggled.connect(self._on_enabled)
         grid.addWidget(self.enabled, 0, 0)
 
@@ -234,13 +241,16 @@ class ControlCard(QFrame):
 
         source = QHBoxLayout()
         self.curve = QComboBox()
-        self.curve.setToolTip("Which curve drives this fan")
+        self.curve.setToolTip(tr("Which curve drives this fan"))
+        # Long curve names shrink the list, not the buttons next to it.
+        self.curve.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.curve.setMinimumContentsLength(8)
         self.curve.currentIndexChanged.connect(self._on_curve_changed)
         source.addWidget(self.curve, 1)
 
         self.edit_curve = QToolButton()
-        self.edit_curve.setText("Edit…")
-        self.edit_curve.setToolTip("Edit the selected curve")
+        self.edit_curve.setText(tr("Edit…"))
+        self.edit_curve.setToolTip(tr("Edit the selected curve"))
         self.edit_curve.clicked.connect(
             lambda: self.editCurveRequested.emit(self.control.curve_id)
         )
@@ -248,15 +258,15 @@ class ControlCard(QFrame):
 
         self.settings = QToolButton()
         self.settings.setText("⚙")
-        self.settings.setToolTip("Limits, spin-up and response settings")
+        self.settings.setToolTip(tr("Limits, spin-up and response settings"))
         self.settings.clicked.connect(self._open_settings)
         source.addWidget(self.settings)
 
         self.calibrate = QToolButton()
-        self.calibrate.setText("Calibrate")
+        self.calibrate.setText(tr("Calibrate"))
         self.calibrate.setToolTip(
-            "Measure where this fan stops and starts. Takes about a minute and\n"
-            "spins the fan up and down while it runs."
+            tr("Measure where this fan stops and starts. Takes a few minutes and\n"
+            "spins the fan up and down while it runs.")
         )
         self.calibrate.clicked.connect(lambda: self.calibrateRequested.emit(self.control.id))
         source.addWidget(self.calibrate)
@@ -304,7 +314,7 @@ class ControlCard(QFrame):
         self.enabled.setChecked(control.enabled)
 
         self.curve.clear()
-        self.curve.addItem("Manual", MANUAL)
+        self.curve.addItem(tr("Manual"), MANUAL)
         for curve in config.curves:
             self.curve.addItem(curve.name, curve.id)
         index = self.curve.findData(control.curve_id or MANUAL)
@@ -337,26 +347,26 @@ class ControlCard(QFrame):
         if rpm is None:
             self.rpm.setText("")
         else:
-            self.rpm.setText(f"{int(rpm)} rpm")
+            self.rpm.setText(tr("{rpm} rpm", rpm=int(rpm)))
 
         palette = self.palette()
         note = ""
         colour = ""
         if entry.get("with_firmware"):
-            note = "Cool enough: the firmware is running this fan."
+            note = tr("Cool enough: the firmware is running this fan.")
         elif entry.get("paused"):
-            note, colour = "Calibrating — the curve is standing down.", "#f67400"
+            note, colour = tr("Calibrating — the curve is standing down."), "#f67400"
         elif entry.get("error"):
             note, colour = entry["error"], "#da4453"
         elif entry.get("stalled"):
-            note = "Reads 0 rpm while being driven — raise the minimum or the start speed."
+            note = tr("Reads 0 rpm while being driven — raise the minimum or the start speed.")
             colour = "#da4453"
         elif not entry.get("available", True) and not entry.get("enabled"):
-            note = "No matching hardware on this machine."
+            note = tr("No matching hardware on this machine.")
         elif entry.get("kicking"):
-            note, colour = "Spinning up…", "#f67400"
+            note, colour = tr("Spinning up…"), "#f67400"
         elif self._overridden:
-            note, colour = "Driven by hand — the curve is not in control.", "#f67400"
+            note, colour = tr("Driven by hand — the curve is not in control."), "#f67400"
         self.note.setText(note)
         self.note.setVisible(bool(note))
         self.note.setStyleSheet(f"color: {colour};" if colour else "")

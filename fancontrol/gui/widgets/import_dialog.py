@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..i18n import N_, tr
+
 WIN_PREFIX = "win:"
 
 AUTOMATIC = "automatic"
@@ -32,16 +34,16 @@ AMBIGUOUS = "ambiguous"
 UNMATCHED = "unmatched"
 
 SECTION_TITLES = {
-    AUTOMATIC: "Matched automatically",
-    AMBIGUOUS: "Needs a decision",
-    UNMATCHED: "Nothing on this machine matches",
+    AUTOMATIC: N_("Matched automatically"),
+    AMBIGUOUS: N_("Needs a decision"),
+    UNMATCHED: N_("Nothing on this machine matches"),
 }
 
 
 class ImportDialog(QDialog):
     def __init__(self, result: dict, inventory: dict, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Import from FanControl")
+        self.setWindowTitle(tr("Import from FanControl"))
         self.resize(860, 560)
 
         self._result = result
@@ -53,17 +55,17 @@ class ImportDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        heading = QLabel(
-            f"Found <b>{summary['curves']}</b> curves and "
-            f"<b>{summary['controls']}</b> fans in the file."
-        )
+        heading = QLabel(tr(
+            "Found <b>{curves}</b> curves and <b>{fans}</b> fans in the file.",
+            curves=summary["curves"], fans=summary["controls"],
+        ))
         heading.setTextFormat(Qt.RichText)
         layout.addWidget(heading)
 
         explanation = QLabel(
-            "Windows names hardware differently from Linux, so every sensor and "
+            tr("Windows names hardware differently from Linux, so every sensor and "
             "fan has to be pointed at the real thing on this machine. Anything "
-            "left unassigned is imported but stays switched off."
+            "left unassigned is imported but stays switched off.")
         )
         explanation.setWordWrap(True)
         explanation.setEnabled(False)
@@ -88,17 +90,17 @@ class ImportDialog(QDialog):
         self._populate(mapping)
 
         options = QHBoxLayout()
-        self.merge = QCheckBox("Add to the current configuration instead of replacing it")
+        self.merge = QCheckBox(tr("Add to the current configuration instead of replacing it"))
         self.merge.setToolTip(
-            "Keeps the fans you have already set up. A fan the imported file "
-            "also drives is replaced by the imported one."
+            tr("Keeps the fans you have already set up. A fan the imported file "
+            "also drives is replaced by the imported one.")
         )
         options.addWidget(self.merge)
         options.addStretch(1)
         layout.addLayout(options)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Import")
+        buttons.button(QDialogButtonBox.Ok).setText(tr("Import"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -121,7 +123,7 @@ class ImportDialog(QDialog):
         ]
 
     def _section(self, key: str) -> QTreeWidgetItem:
-        item = QTreeWidgetItem(self.tree, [SECTION_TITLES[key], "", ""])
+        item = QTreeWidgetItem(self.tree, [tr(SECTION_TITLES[key]), "", ""])
         font = QFont(item.font(0))
         font.setBold(True)
         item.setFont(0, font)
@@ -134,14 +136,17 @@ class ImportDialog(QDialog):
         item = QTreeWidgetItem(parent, [win_id.removeprefix(WIN_PREFIX), "", reason])
 
         combo = QComboBox()
-        combo.addItem("— leave unassigned —", "")
+        combo.addItem(tr("— leave unassigned —"), "")
         # Offer the scored candidates first, then everything else of the right
         # kind, so a wrong automatic answer is still easy to correct.
         seen: set[str] = set()
         for candidate in candidates:
             target = candidate["target_id"]
             label = self._label_for(target)
-            combo.addItem(f"{label}   ·  {candidate['score']:.0%} match", target)
+            combo.addItem(
+                tr("{name}   ·  {score} match", name=label, score=f"{candidate['score']:.0%}"),
+                target,
+            )
             seen.add(target)
         for target, label in self._targets_for(kind):
             if target not in seen:

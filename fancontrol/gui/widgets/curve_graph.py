@@ -24,6 +24,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from ...core.models import CurvePoint
+from ..i18n import tr
 
 #: Default temperature range. Individual curves override it: a GPU curve is
 #: commonly drawn up to 120 C, and its points have to stay reachable.
@@ -53,6 +54,7 @@ class CurveGraph(QWidget):
         self._accent = QColor("#3daee9")
         self._min_temp = MIN_TEMP
         self._max_temp = MAX_TEMP
+        self._compact = False
 
         self.setMinimumSize(340, 220)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -82,6 +84,16 @@ class CurveGraph(QWidget):
     def temperature_range(self) -> tuple[float, float]:
         return self._min_temp, self._max_temp
 
+    def set_compact(self, compact: bool) -> None:
+        """A small read-only preview: no axis labels, no value tag, thin margins."""
+
+        self._compact = compact
+        if compact:
+            self.set_editable(False)
+            self.setMinimumSize(120, 60)
+            self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.update()
+
     def set_editable(self, editable: bool) -> None:
         self._editable = editable
         self.setCursor(Qt.ArrowCursor)
@@ -102,6 +114,8 @@ class CurveGraph(QWidget):
     # coordinate mapping
 
     def _plot_rect(self) -> QRectF:
+        if self._compact:
+            return QRectF(2, 2, max(1.0, self.width() - 4), max(1.0, self.height() - 4))
         return QRectF(
             MARGIN_LEFT,
             MARGIN_TOP,
@@ -156,7 +170,7 @@ class CurveGraph(QWidget):
                 self._paint_handles(painter)
         else:
             painter.setPen(QPen(faint))
-            painter.drawText(rect, Qt.AlignCenter, "Double-click to add a point")
+            painter.drawText(rect, Qt.AlignCenter, tr("Double-click to add a point"))
         self._paint_reading(painter, rect, text_colour)
 
         # drawRect fills with the current brush, and the tooltip tag above may
@@ -178,7 +192,7 @@ class CurveGraph(QWidget):
             x = self._to_pixel(temperature, 0).x()
             painter.setPen(QPen(grid, 1))
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
-            if temperature % (step * 2) == 0:
+            if temperature % (step * 2) == 0 and not self._compact:
                 painter.setPen(QPen(faint))
                 painter.drawText(
                     QRectF(x - 18, rect.bottom() + 4, 36, MARGIN_BOTTOM - 6),
@@ -186,10 +200,12 @@ class CurveGraph(QWidget):
                     f"{temperature}°",
                 )
 
-        for percent in range(0, 101, 20):
+        for percent in range(0, 101, 50 if self._compact else 20):
             y = self._to_pixel(0, percent).y()
             painter.setPen(QPen(grid, 1))
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
+            if self._compact:
+                continue
             painter.setPen(QPen(faint))
             painter.drawText(
                 QRectF(0, y - 9, MARGIN_LEFT - 6, 18),
@@ -268,7 +284,9 @@ class CurveGraph(QWidget):
             painter.drawLine(QPointF(rect.left(), centre.y()), QPointF(x, centre.y()))
             painter.setPen(Qt.NoPen)
             painter.setBrush(QBrush(text_colour))
-            painter.drawEllipse(centre, 4.0, 4.0)
+            painter.drawEllipse(centre, 4.0 if not self._compact else 3.0, 4.0 if not self._compact else 3.0)
+            if self._compact:
+                return
             self._draw_tag(
                 painter,
                 QPointF(min(x + 8, rect.right() - 90), rect.top() + 4),

@@ -12,14 +12,33 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .. import __version__
+from . import i18n
+from .i18n import tr
 
 log = logging.getLogger("fancontrol-gui")
 
 STYLE = """
-QFrame#controlCard {
+QFrame#controlCard, QFrame#card {
     border: 1px solid palette(mid);
-    border-radius: 8px;
+    border-radius: 10px;
     background: palette(base);
+}
+QFrame#card:hover {
+    border-color: palette(highlight);
+}
+QFrame#addCard {
+    border: 2px dashed palette(mid);
+    border-radius: 10px;
+    background: transparent;
+}
+QFrame#addCard:hover {
+    border-color: palette(highlight);
+}
+QLabel#chip {
+    border-radius: 8px;
+    padding: 1px 8px;
+    background: palette(alternate-base);
+    color: palette(text);
 }
 QProgressBar {
     border: none;
@@ -49,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="drive the hardware from this process instead of using the daemon "
              "(needs root, or a simulated hwmon tree)",
     )
+    parser.add_argument("--lang", default=None,
+                        help="language of the window, such as en or uk "
+                             "(default: the system's; also FANCONTROL_LANG)")
     parser.add_argument("-c", "--config", type=Path, default=None,
                         help="configuration file, with --local")
     return parser
@@ -64,8 +86,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     app = QApplication([sys.argv[0], *qt_args])
+    i18n.install(app, args.lang)
     app.setApplicationName("Fan Control")
-    app.setApplicationDisplayName("Fan Control")
+    app.setApplicationDisplayName(tr("Fan Control"))
     app.setDesktopFileName("io.github.fancontrol_linux.gui")
     app.setWindowIcon(QIcon.fromTheme("sensors-fan", QIcon.fromTheme("computer")))
     app.setStyleSheet(STYLE)
@@ -75,13 +98,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         proxy = LocalProxy(args.config) if args.local else DBusProxy(session=args.session)
     except ProxyError as exc:
-        QMessageBox.critical(None, "Fan Control", str(exc))
+        QMessageBox.critical(None, tr("Fan Control"), str(exc))
         return 1
     except PermissionError:
         QMessageBox.critical(
-            None, "Fan Control",
-            "Direct hardware access needs root. Run the daemon instead:\n\n"
-            "    sudo systemctl enable --now fancontrold",
+            None, tr("Fan Control"),
+            tr("Direct hardware access needs root. Run the daemon instead:\n\n"
+            "    sudo systemctl enable --now fancontrold"),
         )
         return 1
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Window
+
+* Redesigned after FanControl: one scrolling page of cards. Every curve is a
+  card with a small graph, the temperature it reads and the speed it outputs,
+  and the fans it drives; sensors are tiles coloured by temperature.
+* The window is translated: English, and Ukrainian on a Ukrainian desktop,
+  including Qt's own buttons and dialogs. `--lang` or `FANCONTROL_LANG`
+  choose explicitly.
+
 ## 1.0.0 — 2026-09-23
 
 First release.

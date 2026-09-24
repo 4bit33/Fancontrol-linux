@@ -1,12 +1,19 @@
-"""The main window."""
+"""The main window: one scrolling page of cards, the way FanControl does it.
+
+Four sections, each a grid that wraps to the window's width:
+
+* **Controls** - one card per fan, with its speed, curve and settings;
+* **Curves** - one card per curve, with a small graph and what it outputs now;
+* **Temperatures** and **Fan speeds** - every sensor as a small tile.
+"""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, Slot
-from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
+from PySide6.QtCore import Qt, QTimer, Slot
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -15,16 +22,12 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
-    QHBoxLayout,
+    QInputDialog,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
-    QPushButton,
     QScrollArea,
-    QSplitter,
     QStatusBar,
     QSystemTrayIcon,
     QToolBar,
@@ -32,21 +35,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__
-from ..core.models import Config, CurvePoint, GraphCurve, validate
+from ..core.models import Config, validate
 from .client import BaseProxy, ProxyError
+from .i18n import tr
+from .widgets.cards import CURVE_CARD_WIDTH, AddCard, CurveCard, Section, SensorCard
 from .widgets.control_card import ControlCard
-from .widgets.curve_editor import (
-    CURVE_DESCRIPTIONS,
-    CurveEditorDialog,
-    NewCurveDialog,
-    curve_range,
-    make_curve,
-    sample_curve,
-)
-from .widgets.curve_graph import CurveGraph
+from .widgets.curve_editor import CurveEditorDialog, NewCurveDialog, make_curve
 from .widgets.import_dialog import ImportDialog
-from .widgets.sensor_panel import SensorPanel
 
 log = logging.getLogger(__name__)
 
@@ -60,8 +55,7 @@ class SettingsDialog(QDialog):
 
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self._config = config
+        self.setWindowTitle(tr("Settings"))
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -72,32 +66,32 @@ class SettingsDialog(QDialog):
         self.interval.setDecimals(1)
         self.interval.setSuffix(" s")
         self.interval.setValue(config.settings.update_interval)
-        self.interval.setToolTip("How often the curves are evaluated.")
+        self.interval.setToolTip(tr("How often the curves are evaluated."))
 
         self.critical = QDoubleSpinBox()
         self.critical.setRange(0, 120)
         self.critical.setSuffix(" °C")
         self.critical.setValue(config.settings.critical_temperature)
-        self.critical.setToolTip(
+        self.critical.setToolTip(tr(
             "Every managed fan goes to 100% above this temperature.\n"
             "Set to 0 to switch the override off."
-        )
+        ))
 
         self.failsafe = QDoubleSpinBox()
         self.failsafe.setRange(0, 100)
         self.failsafe.setSuffix(" %")
         self.failsafe.setValue(config.settings.failsafe_percent)
-        self.failsafe.setToolTip(
+        self.failsafe.setToolTip(tr(
             "The speed used when a sensor a curve needs cannot be read.\n"
             "Leave this high: a fan running too fast is better than a hot chip."
-        )
+        ))
 
-        self.restore = QCheckBox("Hand the fans back to the firmware when the daemon stops")
+        self.restore = QCheckBox(tr("Hand the fans back to the firmware when the daemon stops"))
         self.restore.setChecked(config.settings.restore_on_exit)
 
-        form.addRow("Update every", self.interval)
-        form.addRow("Force full speed above", self.critical)
-        form.addRow("Speed when a sensor fails", self.failsafe)
+        form.addRow(tr("Update every"), self.interval)
+        form.addRow(tr("Force full speed above"), self.critical)
+        form.addRow(tr("Speed when a sensor fails"), self.failsafe)
         form.addRow("", self.restore)
         layout.addLayout(form)
 
@@ -120,13 +114,15 @@ class MainWindow(QMainWindow):
         self.config = Config()
         self.inventory: dict = {}
         self.cards: dict[str, ControlCard] = {}
+        self.curve_cards: dict[str, CurveCard] = {}
+        self.sensor_cards: dict[str, SensorCard] = {}
         self.latest_status: dict = {}
         self._overrides: dict[str, float] = {}
         #: Controls whose calibration we are waiting on.
         self._calibrating: set[str] = set()
 
-        self.setWindowTitle("Fan Control")
-        self.resize(1180, 720)
+        self.setWindowTitle(tr("Fan Control"))
+        self.resize(1280, 820)
 
         self._push_timer = QTimer(self)
         self._push_timer.setSingleShot(True)
@@ -146,116 +142,69 @@ class MainWindow(QMainWindow):
     # construction
 
     def _build_ui(self) -> None:
-        splitter = QSplitter(Qt.Horizontal)
-        self.setCentralWidget(splitter)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        self.setCentralWidget(scroll)
 
-        # -- fans
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(self._section_label("Fans"))
+        page = QWidget()
+        page.setObjectName("page")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 14, 18, 18)
+        layout.setSpacing(22)
 
-        self.card_area = QScrollArea()
-        self.card_area.setWidgetResizable(True)
-        self.card_area.setFrameShape(QScrollArea.NoFrame)
-        # The cards carry a lot of controls; below this they start clipping.
-        self.card_area.setMinimumWidth(360)
-        self.card_host = QWidget()
-        self.card_layout = QVBoxLayout(self.card_host)
-        self.card_layout.setContentsMargins(4, 4, 4, 4)
-        self.card_layout.setSpacing(8)
-        self.card_layout.addStretch(1)
-        self.card_area.setWidget(self.card_host)
-        left_layout.addWidget(self.card_area, 1)
-        splitter.addWidget(left)
-
-        # -- curves
-        middle = QWidget()
-        middle_layout = QVBoxLayout(middle)
-        middle_layout.setContentsMargins(0, 0, 0, 0)
-        middle_layout.addWidget(self._section_label("Curves"))
-
-        self.curve_list = QListWidget()
-        self.curve_list.currentItemChanged.connect(self._on_curve_selected)
-        self.curve_list.itemDoubleClicked.connect(lambda _item: self._edit_selected_curve())
-        middle_layout.addWidget(self.curve_list, 1)
-
-        self.curve_preview = CurveGraph()
-        self.curve_preview.set_editable(False)
-        self.curve_preview.setMinimumHeight(220)
-        middle_layout.addWidget(self.curve_preview, 3)
-
-        curve_buttons = QHBoxLayout()
-        add = QPushButton("Add")
-        add.clicked.connect(self._add_curve)
-        edit = QPushButton("Edit")
-        edit.clicked.connect(self._edit_selected_curve)
-        remove = QPushButton("Remove")
-        remove.clicked.connect(self._remove_selected_curve)
-        for button in (add, edit, remove):
-            curve_buttons.addWidget(button)
-        middle_layout.addLayout(curve_buttons)
-        splitter.addWidget(middle)
-
-        # -- sensors
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.addWidget(self._section_label("Sensors"))
-        self.sensors = SensorPanel()
-        self.sensors.renamed.connect(self._on_sensor_renamed)
-        right_layout.addWidget(self.sensors, 1)
-        splitter.addWidget(right)
-
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 3)
-        splitter.setStretchFactor(2, 3)
-        # Stretch factors alone leave the fan column squeezed to its minimum on
-        # first show, so give the three panes a starting width as well.
-        splitter.setSizes([430, 380, 370])
+        self.controls_section = Section(tr("Controls"))
+        self.curves_section = Section(tr("Curves"))
+        self.temperatures_section = Section(tr("Temperatures"))
+        self.speeds_section = Section(tr("Fan speeds"))
+        for section in (self.controls_section, self.curves_section,
+                        self.temperatures_section, self.speeds_section):
+            layout.addWidget(section)
+        layout.addStretch(1)
+        scroll.setWidget(page)
 
         self.setStatusBar(QStatusBar())
         self.status_label = QLabel("")
+        self.status_label.setEnabled(False)
         self.statusBar().addPermanentWidget(self.status_label)
 
-    @staticmethod
-    def _section_label(text: str) -> QLabel:
-        label = QLabel(text)
-        font = QFont(label.font())
-        font.setBold(True)
-        font.setPointSizeF(font.pointSizeF() + 1)
-        label.setFont(font)
-        label.setContentsMargins(6, 6, 6, 2)
-        return label
-
     def _build_actions(self) -> None:
-        toolbar = QToolBar("Main")
+        toolbar = QToolBar(tr("Main"))
         toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.addToolBar(toolbar)
 
-        self.action_enabled = QAction("Fan control on", self)
+        self.action_enabled = QAction(
+            QIcon.fromTheme("media-playback-start"), tr("Fan control on"), self
+        )
         self.action_enabled.setCheckable(True)
         self.action_enabled.setToolTip(
-            "When off, the fans go back to whatever the motherboard firmware does."
+            tr("When off, the fans go back to whatever the motherboard firmware does.")
         )
         self.action_enabled.toggled.connect(self._on_master_toggled)
         toolbar.addAction(self.action_enabled)
         toolbar.addSeparator()
 
-        action_import = QAction("Import from FanControl…", self)
-        action_import.setToolTip("Read a userConfig.json from FanControl on Windows")
+        action_add = QAction(QIcon.fromTheme("list-add"), tr("Add curve"), self)
+        action_add.triggered.connect(self._add_curve)
+        toolbar.addAction(action_add)
+
+        action_import = QAction(
+            QIcon.fromTheme("document-import"), tr("Import from FanControl…"), self
+        )
+        action_import.setToolTip(tr("Read a userConfig.json from FanControl on Windows"))
         action_import.triggered.connect(self._import_fancontrol)
         toolbar.addAction(action_import)
 
-        action_rescan = QAction("Rescan hardware", self)
+        action_rescan = QAction(QIcon.fromTheme("view-refresh"), tr("Rescan hardware"), self)
         action_rescan.triggered.connect(self._rescan)
         toolbar.addAction(action_rescan)
 
-        action_settings = QAction("Settings…", self)
+        action_settings = QAction(QIcon.fromTheme("configure"), tr("Settings…"), self)
         action_settings.triggered.connect(self._open_settings)
         toolbar.addAction(action_settings)
 
-        action_quit = QAction("Quit", self)
+        action_quit = QAction(tr("Quit"), self)
         action_quit.setShortcut(QKeySequence.Quit)
         action_quit.triggered.connect(QApplication.quit)
         self.addAction(action_quit)
@@ -266,15 +215,15 @@ class MainWindow(QMainWindow):
             return
         icon = QIcon.fromTheme("sensors-fan", QIcon.fromTheme("computer"))
         self.tray = QSystemTrayIcon(icon, self)
-        self.tray.setToolTip("Fan Control")
+        self.tray.setToolTip(tr("Fan Control"))
 
         menu = QMenu()
-        self.tray_toggle = menu.addAction("Fan control on")
+        self.tray_toggle = menu.addAction(tr("Fan control on"))
         self.tray_toggle.setCheckable(True)
         self.tray_toggle.toggled.connect(self._on_master_toggled)
         menu.addSeparator()
-        menu.addAction("Show window", self._show_window)
-        menu.addAction("Quit", QApplication.quit)
+        menu.addAction(tr("Show window"), self._show_window)
+        menu.addAction(tr("Quit"), QApplication.quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
             lambda reason: self._show_window()
@@ -295,71 +244,88 @@ class MainWindow(QMainWindow):
             self.inventory = self.proxy.inventory()
             self.config = Config.from_dict(self.proxy.config())
         except ProxyError as exc:
-            QMessageBox.critical(self, "Fan Control", str(exc))
+            QMessageBox.critical(self, tr("Fan Control"), str(exc))
             return
 
-        self.action_enabled.blockSignals(True)
-        self.action_enabled.setChecked(self.config.settings.control_enabled)
-        self.action_enabled.blockSignals(False)
-        if getattr(self, "tray", None) is not None:
-            self.tray_toggle.blockSignals(True)
-            self.tray_toggle.setChecked(self.config.settings.control_enabled)
-            self.tray_toggle.blockSignals(False)
+        self._set_master(self.config.settings.control_enabled)
+        self._rebuild_controls()
+        self._rebuild_curves()
+        self._rebuild_sensors()
+        self.status_label.setText(tr(
+            "{count} outputs · {path}",
+            count=len(self.inventory.get("controls", [])),
+            path=self.inventory.get("config_path", ""),
+        ))
+        if self.latest_status:
+            self._on_status(self.latest_status)
 
-        self.sensors.rebuild(self.inventory, self.config.sensor_names)
-        self._rebuild_cards()
-        self._rebuild_curve_list()
-        self.status_label.setText(
-            f"{len(self.inventory.get('controls', []))} outputs · "
-            f"{self.inventory.get('config_path', '')}"
-        )
-
-    def _rebuild_cards(self) -> None:
-        for card in self.cards.values():
-            card.setParent(None)
-            card.deleteLater()
+    def _rebuild_controls(self) -> None:
+        self.controls_section.clear()
         self.cards.clear()
 
         visible = [c for c in self.config.controls if not c.hidden]
         for control in visible:
             card = ControlCard(control, self.config, self.inventory)
-            card.configEdited.connect(self._schedule_push)
+            card.configEdited.connect(self._on_control_edited)
             card.calibrateRequested.connect(self._calibrate)
             card.editCurveRequested.connect(self._edit_curve_by_id)
-            self.card_layout.insertWidget(self.card_layout.count() - 1, card)
+            self.controls_section.add(card)
             self.cards[control.id] = card
+        self.controls_section.set_count(len(visible))
 
         if not visible:
-            empty = QLabel(
+            empty = QLabel(tr(
                 "No controllable fans were found.\n\n"
                 "On most desktop boards the super-I/O driver has to be loaded "
-                "first:\n    sudo modprobe nct6775\n\n"
-                "Run 'sudo sensors-detect' to find out which module your board "
-                "needs, then use Rescan hardware."
-            )
-            empty.setAlignment(Qt.AlignCenter)
+                "first. Run 'fanctl doctor' to see what is missing, then use "
+                "Rescan hardware."
+            ))
             empty.setWordWrap(True)
             empty.setEnabled(False)
-            self.card_layout.insertWidget(0, empty)
-            self.cards["__empty__"] = empty  # keeps it removable on the next rebuild
+            empty.setFixedWidth(520)
+            self.controls_section.add(empty)
 
-    def _rebuild_curve_list(self) -> None:
-        current = self.curve_list.currentItem()
-        selected = current.data(Qt.UserRole) if current else None
-
-        self.curve_list.blockSignals(True)
-        self.curve_list.clear()
+    def _rebuild_curves(self) -> None:
+        self.curves_section.clear()
+        self.curve_cards.clear()
         for curve in self.config.curves:
-            title = CURVE_DESCRIPTIONS.get(curve.type, (curve.type, ""))[0]
-            item = QListWidgetItem(f"{curve.name}   ·  {title}")
-            item.setData(Qt.UserRole, curve.id)
-            self.curve_list.addItem(item)
-            if curve.id == selected:
-                self.curve_list.setCurrentItem(item)
-        self.curve_list.blockSignals(False)
-        if self.curve_list.currentItem() is None and self.curve_list.count():
-            self.curve_list.setCurrentRow(0)
-        self._on_curve_selected(self.curve_list.currentItem(), None)
+            card = CurveCard(curve, self.config, self.inventory)
+            card.editRequested.connect(self._edit_curve_by_id)
+            card.removeRequested.connect(self._remove_curve)
+            self.curves_section.add(card)
+            self.curve_cards[curve.id] = card
+        add = AddCard(tr("Add curve"), CURVE_CARD_WIDTH, 110)
+        add.clicked.connect(self._add_curve)
+        self.curves_section.add(add)
+        self.curves_section.set_count(len(self.config.curves))
+        if self.latest_status:
+            for card in self.curve_cards.values():
+                card.update_status(self.latest_status)
+
+    def _rebuild_sensors(self) -> None:
+        for section in (self.temperatures_section, self.speeds_section):
+            section.clear()
+        self.sensor_cards.clear()
+        names = self.config.sensor_names
+
+        for kind, section, key in (
+            ("temperature", self.temperatures_section, "temperatures"),
+            ("fan", self.speeds_section, "fans"),
+        ):
+            entries = self.inventory.get(key, [])
+            for entry in entries:
+                card = SensorCard(
+                    entry["id"], names.get(entry["id"]) or entry["name"],
+                    entry.get("device", {}).get("label", ""), kind,
+                )
+                card.renameRequested.connect(self._rename_sensor)
+                section.add(card)
+                self.sensor_cards[entry["id"]] = card
+            section.set_count(len(entries))
+
+    def _reload_control_cards(self) -> None:
+        for card in self.cards.values():
+            card.reload(card.control, self.config, self.inventory)
 
     # ------------------------------------------------------------------
     # live updates
@@ -372,29 +338,18 @@ class MainWindow(QMainWindow):
 
         for control_id, entry in status.get("controls", {}).items():
             card = self.cards.get(control_id)
-            if isinstance(card, ControlCard):
+            if card is not None:
                 card.set_overridden(control_id in self._overrides)
                 card.update_status(entry)
 
-        self.sensors.update_status(status)
+        for card in self.curve_cards.values():
+            card.update_status(status)
+
+        readings = {**status.get("temperatures", {}), **status.get("fans", {})}
+        for sensor_id, card in self.sensor_cards.items():
+            card.update_value(readings.get(sensor_id))
+
         self._follow_calibrations(status)
-
-        for row in range(self.curve_list.count()):
-            item = self.curve_list.item(row)
-            curve = self.config.curve_by_id(item.data(Qt.UserRole))
-            if curve is None:
-                continue
-            title = CURVE_DESCRIPTIONS.get(curve.type, (curve.type, ""))[0]
-            value = status.get("curve_values", {}).get(curve.id)
-            error = status.get("curve_errors", {}).get(curve.id)
-            if error:
-                item.setText(f"{curve.name}   ·  {title}   ·  unavailable")
-                item.setToolTip(error)
-            elif value is not None:
-                item.setText(f"{curve.name}   ·  {title}   ·  {value:.0f}%")
-                item.setToolTip("")
-
-        self._update_preview_reading()
 
         messages = status.get("messages", [])
         if messages:
@@ -410,29 +365,18 @@ class MainWindow(QMainWindow):
                 continue
             if report.get("state") == "running":
                 control = self.config.control_by_id(control_id)
-                name = control.name if control else control_id
-                self.statusBar().showMessage(
-                    f"Calibrating {name} — now at {report.get('percent', 0):.0f}%"
-                )
+                self.statusBar().showMessage(tr(
+                    "Calibrating {name} — now at {percent}%",
+                    name=control.name if control else control_id,
+                    percent=f"{report.get('percent', 0):.0f}",
+                ))
                 continue
             self._calibrating.discard(control_id)
             self._on_calibration_finished(control_id, report)
 
-    def _update_preview_reading(self) -> None:
-        item = self.curve_list.currentItem()
-        if item is None:
-            return
-        curve = self.config.curve_by_id(item.data(Qt.UserRole))
-        if curve is None:
-            return
-        sensor_id = getattr(curve, "sensor_id", "")
-        temperature = self.latest_status.get("temperatures", {}).get(sensor_id)
-        value = self.latest_status.get("curve_values", {}).get(curve.id)
-        self.curve_preview.set_reading(temperature, value)
-
     @Slot(str)
     def _on_failed(self, message: str) -> None:
-        QMessageBox.warning(self, "Fan Control", message)
+        QMessageBox.warning(self, tr("Fan Control"), message)
 
     # ------------------------------------------------------------------
     # editing
@@ -440,59 +384,81 @@ class MainWindow(QMainWindow):
     def _schedule_push(self) -> None:
         self._push_timer.start()
 
+    def _on_control_edited(self) -> None:
+        # Another curve may now drive this fan, which changes the curve
+        # cards' "drives" line; rebuild them once the edit has returned.
+        self._schedule_push()
+        QTimer.singleShot(0, self._rebuild_curves)
+
     def _push_config(self) -> None:
         problems = validate(self.config)
         if problems:
             QMessageBox.warning(
-                self, "Fan Control",
-                "This configuration cannot be applied:\n\n  " + "\n  ".join(problems),
+                self, tr("Fan Control"),
+                tr("This configuration cannot be applied:") + "\n\n  " + "\n  ".join(problems),
             )
             return
         if self.proxy.push_config(self.config.to_dict()):
-            self.statusBar().showMessage("Saved", 1500)
+            self.statusBar().showMessage(tr("Saved"), 1500)
+
+    def _set_master(self, enabled: bool) -> None:
+        label = tr("Fan control on") if enabled else tr("Fan control off")
+        for action in (self.action_enabled, getattr(self, "tray_toggle", None)):
+            if action is None:
+                continue
+            action.blockSignals(True)
+            action.setChecked(enabled)
+            action.setText(label)
+            action.blockSignals(False)
 
     def _on_master_toggled(self, enabled: bool) -> None:
         result = self.proxy.set_control_enabled(enabled)
         if not result.get("ok"):
-            QMessageBox.warning(self, "Fan Control", result.get("error", "failed"))
+            QMessageBox.warning(self, tr("Fan Control"), result.get("error", tr("failed")))
+            self._set_master(not enabled)
             return
         self.config.settings.control_enabled = enabled
-        label = "Fan control on" if enabled else "Fan control off"
-        self.action_enabled.setText(label)
-        if getattr(self, "tray", None) is not None:
-            self.tray_toggle.blockSignals(True)
-            self.tray_toggle.setChecked(enabled)
-            self.tray_toggle.blockSignals(False)
-        self.action_enabled.blockSignals(True)
-        self.action_enabled.setChecked(enabled)
-        self.action_enabled.blockSignals(False)
+        self._set_master(enabled)
+
+    def _sensor_name(self, sensor_id: str) -> str:
+        if sensor_id in self.config.sensor_names:
+            return self.config.sensor_names[sensor_id]
+        for key in ("temperatures", "fans"):
+            for entry in self.inventory.get(key, []):
+                if entry["id"] == sensor_id:
+                    return entry["name"]
+        return ""
+
+    def _rename_sensor(self, sensor_id: str) -> None:
+        name, accepted = QInputDialog.getText(
+            self, tr("Rename sensor"), tr("Name (leave empty for the original):"),
+            text=self._sensor_name(sensor_id),
+        )
+        if not accepted:
+            return
+        self._on_sensor_renamed(sensor_id, name.strip())
+        self._rebuild_sensors()
+        self._rebuild_curves()
+        if self.latest_status:
+            self._on_status(self.latest_status)
 
     def _on_sensor_renamed(self, sensor_id: str, name: str) -> None:
-        if name:
+        original = next(
+            (entry["name"] for key in ("temperatures", "fans")
+             for entry in self.inventory.get(key, []) if entry["id"] == sensor_id),
+            None,
+        )
+        if name and name != original:
             self.config.sensor_names[sensor_id] = name
         else:
             self.config.sensor_names.pop(sensor_id, None)
         self._schedule_push()
 
-    def _on_curve_selected(self, current: QListWidgetItem | None, _previous) -> None:
-        if current is None:
-            self.curve_preview.set_points([])
-            return
-        curve = self.config.curve_by_id(current.data(Qt.UserRole))
-        if curve is None:
-            return
-        samples = sample_curve(curve)
-        self.curve_preview.set_temperature_range(*curve_range(curve))
-        self.curve_preview.set_points(
-            [CurvePoint(t, p) for t, p in samples] if samples else []
-        )
-        self._update_preview_reading()
-
     def _add_curve(self) -> None:
         chooser = NewCurveDialog(self)
         if chooser.exec() != QDialog.Accepted:
             return
-        name = f"Curve {len(self.config.curves) + 1}"
+        name = tr("Curve {number}", number=len(self.config.curves) + 1)
         curve = make_curve(chooser.selected_type(), name)
         dialog = CurveEditorDialog(
             curve, self.config, self.inventory,
@@ -501,16 +467,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.Accepted:
             return
         self.config.curves.append(curve)
-        self._rebuild_curve_list()
-        for card in self.cards.values():
-            if isinstance(card, ControlCard):
-                card.reload(card.control, self.config, self.inventory)
-        self._schedule_push()
-
-    def _edit_selected_curve(self) -> None:
-        item = self.curve_list.currentItem()
-        if item is not None:
-            self._edit_curve_by_id(item.data(Qt.UserRole))
+        self._after_curves_changed()
 
     def _edit_curve_by_id(self, curve_id: str) -> None:
         curve = self.config.curve_by_id(curve_id)
@@ -522,17 +479,9 @@ class MainWindow(QMainWindow):
         )
         if dialog.exec() != QDialog.Accepted:
             return
-        self._rebuild_curve_list()
-        for card in self.cards.values():
-            if isinstance(card, ControlCard):
-                card.reload(card.control, self.config, self.inventory)
-        self._schedule_push()
+        self._after_curves_changed()
 
-    def _remove_selected_curve(self) -> None:
-        item = self.curve_list.currentItem()
-        if item is None:
-            return
-        curve_id = item.data(Qt.UserRole)
+    def _remove_curve(self, curve_id: str) -> None:
         curve = self.config.curve_by_id(curve_id)
         if curve is None:
             return
@@ -544,21 +493,23 @@ class MainWindow(QMainWindow):
         ]
         if users:
             QMessageBox.information(
-                self, "Fan Control",
-                f"{curve.name!r} is still in use by: " + ", ".join(sorted(set(users)))
-                + ".\n\nPoint those at another curve first.",
+                self, tr("Fan Control"),
+                tr("“{name}” is still used by: {users}.\n\n"
+                   "Point those at another curve first.",
+                   name=curve.name, users=", ".join(sorted(set(users)))),
             )
             return
 
         if QMessageBox.question(
-            self, "Fan Control", f"Remove the curve {curve.name!r}?"
+            self, tr("Fan Control"), tr("Remove the curve “{name}”?", name=curve.name)
         ) != QMessageBox.Yes:
             return
         self.config.curves = [c for c in self.config.curves if c.id != curve_id]
-        self._rebuild_curve_list()
-        for card in self.cards.values():
-            if isinstance(card, ControlCard):
-                card.reload(card.control, self.config, self.inventory)
+        self._after_curves_changed()
+
+    def _after_curves_changed(self) -> None:
+        self._rebuild_curves()
+        self._reload_control_cards()
         self._schedule_push()
 
     def _open_settings(self) -> None:
@@ -573,37 +524,39 @@ class MainWindow(QMainWindow):
     def _rescan(self) -> None:
         result = self.proxy.rescan()
         if not result.get("ok"):
-            QMessageBox.warning(self, "Fan Control", result.get("error", "rescan failed"))
+            QMessageBox.warning(self, tr("Fan Control"), result.get("error", tr("rescan failed")))
             return
         self.refresh_all()
-        self.statusBar().showMessage("Hardware re-enumerated", 2000)
+        self.statusBar().showMessage(tr("Hardware re-enumerated"), 2000)
 
     def _calibrate(self, control_id: str) -> None:
         control = self.config.control_by_id(control_id)
         if control is None:
             return
         if QMessageBox.question(
-            self, "Calibrate",
-            f"This spins {control.name} all the way up and down to find out "
-            "where it stops and starts turning.\n\nIt takes about a minute and "
-            "the fan will be noisy. Continue?",
+            self, tr("Calibrate"),
+            tr("This spins {name} all the way up and down to find out where it "
+               "stops and starts turning.\n\nIt takes a few minutes and the fan "
+               "will be noisy. Continue?", name=control.name),
         ) != QMessageBox.Yes:
             return
 
         try:
             result = self.proxy.calibrate(control_id)
         except ProxyError as exc:
-            QMessageBox.warning(self, "Calibrate", str(exc))
+            QMessageBox.warning(self, tr("Calibrate"), str(exc))
             return
 
         if not result.get("ok"):
-            QMessageBox.warning(self, "Calibrate", result.get("error", "calibration failed"))
+            QMessageBox.warning(
+                self, tr("Calibrate"), result.get("error", tr("calibration failed"))
+            )
             return
 
         # It runs in the daemon and reports through the status, so the window
         # stays live while the fan is stepped up and down.
         self._calibrating.add(control_id)
-        self.statusBar().showMessage(f"Calibrating {control.name}…")
+        self.statusBar().showMessage(tr("Calibrating {name}…", name=control.name))
 
     def _on_calibration_finished(self, control_id: str, result: dict) -> None:
         control = self.config.control_by_id(control_id)
@@ -613,7 +566,7 @@ class MainWindow(QMainWindow):
 
         if not result.get("ok"):
             QMessageBox.warning(
-                self, "Calibrate", result.get("error", "calibration failed")
+                self, tr("Calibrate"), result.get("error", tr("calibration failed"))
             )
             return
 
@@ -621,25 +574,27 @@ class MainWindow(QMainWindow):
         start = result.get("suggested_start_percent")
         if minimum is None and start is None:
             QMessageBox.information(
-                self, "Calibrate",
-                f"{control.name} kept turning all the way down to 0%, so it has "
-                "no minimum to speak of.",
+                self, tr("Calibrate"),
+                tr("{name} kept turning all the way down to 0%, so it has no "
+                   "minimum to speak of.", name=control.name),
             )
             return
 
         lines = [f"{control.name}:"]
         if result.get("stop_percent") is not None:
-            lines.append(f"  stops turning below {result['stop_percent']:.0f}%")
+            lines.append(tr("  stops turning below {percent}%",
+                            percent=f"{result['stop_percent']:.0f}"))
         if result.get("start_percent") is not None:
-            lines.append(f"  starts turning at {result['start_percent']:.0f}%")
+            lines.append(tr("  starts turning at {percent}%",
+                            percent=f"{result['start_percent']:.0f}"))
         lines.append("")
-        lines.append("Apply the suggested settings?")
+        lines.append(tr("Apply the suggested settings?"))
         if minimum is not None:
-            lines.append(f"  minimum speed → {minimum:.0f}%")
+            lines.append(tr("  minimum speed → {percent}%", percent=f"{minimum:.0f}"))
         if start is not None:
-            lines.append(f"  start speed   → {start:.0f}%")
+            lines.append(tr("  start speed → {percent}%", percent=f"{start:.0f}"))
 
-        if QMessageBox.question(self, "Calibrate", "\n".join(lines)) == QMessageBox.Yes:
+        if QMessageBox.question(self, tr("Calibrate"), "\n".join(lines)) == QMessageBox.Yes:
             if minimum is not None:
                 control.min_percent = float(minimum)
             if start is not None:
@@ -652,22 +607,22 @@ class MainWindow(QMainWindow):
 
     def _import_fancontrol(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(
-            self, "Open a FanControl configuration", str(Path.home()),
-            "FanControl configuration (*.json);;All files (*)",
+            self, tr("Open a FanControl configuration"), str(Path.home()),
+            tr("FanControl configuration (*.json);;All files (*)"),
         )
         if not path:
             return
         try:
             text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
         except OSError as exc:
-            QMessageBox.warning(self, "Import", str(exc))
+            QMessageBox.warning(self, tr("Import"), str(exc))
             return
 
         result = self.proxy.import_fancontrol(text)
         if not result.get("ok"):
             QMessageBox.warning(
-                self, "Import",
-                result.get("error", "this file could not be read as a FanControl configuration"),
+                self, tr("Import"),
+                result.get("error", tr("This file could not be read as a FanControl configuration.")),
             )
             return
 
@@ -679,10 +634,10 @@ class MainWindow(QMainWindow):
             dialog.config(), dialog.mapping(), dialog.merge_requested()
         )
         if not outcome.get("ok"):
-            message = outcome.get("error", "the imported configuration was rejected")
+            message = outcome.get("error", tr("The imported configuration was rejected."))
             for problem in outcome.get("problems", []):
                 message += f"\n  {problem}"
-            QMessageBox.warning(self, "Import", message)
+            QMessageBox.warning(self, tr("Import"), message)
             return
 
         self.refresh_all()
@@ -690,16 +645,15 @@ class MainWindow(QMainWindow):
         if skipped:
             lines = [f"{entry['name']} — {entry['reason']}" for entry in skipped]
             QMessageBox.information(
-                self, "Import",
-                "Imported. These fans were left switched off:\n\n  "
-                + "\n  ".join(lines),
+                self, tr("Import"),
+                tr("Imported. These fans were left switched off:") + "\n\n  " + "\n  ".join(lines),
             )
         else:
-            self.statusBar().showMessage("Imported", 3000)
+            self.statusBar().showMessage(tr("Imported"), 3000)
 
     # ------------------------------------------------------------------
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event) -> None:  # noqa: N802
         if self._push_timer.isActive():
             self._push_timer.stop()
             self._push_config()
