@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-09-24
 
 ### Window
 
@@ -13,6 +13,14 @@
 * Any card — fan, curve or sensor — can be hidden from its right-click menu,
   and brought back with "Show hidden" in the section header. Hiding changes
   only the window, never what the fans do.
+* Cards size themselves to their text in the style and language in use, and
+  the window opens to fit the screen; nothing is cut off.
+
+### Updates
+
+* The window says when a newer release is out, with the command to update
+  ready to copy. It checks GitHub once a day and installs nothing itself; the
+  check can be switched off in Settings.
 
 ## 1.0.0 — 2026-09-23
 

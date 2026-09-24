@@ -121,6 +121,18 @@ installer uses whichever the machine has. Anyone can read the status.
 sudo ./install.sh --uninstall        # remove it (the configuration stays in /etc)
 ```
 
+### Updating
+
+```bash
+cd Fancontrol-linux && git pull && sudo ./install.sh
+```
+
+Your configuration is kept. The window tells you when a new version is out,
+with this command ready to copy: once a day it asks GitHub which release is
+the newest. It never downloads or installs anything by itself — the daemon
+runs as root, and that is a decision for you, not for a background job. The
+check can be switched off in Settings.
+
 ---
 
 ## First steps

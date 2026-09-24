@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fancontrol-linux"
-version = "1.0.0"
+version = "1.1.0"
 description = "Fan control for Linux, in the shape of FanControl for Windows"
 readme = "README.md"
 requires-python = ">=3.10"
