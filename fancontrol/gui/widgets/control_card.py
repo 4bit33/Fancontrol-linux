@@ -25,10 +25,11 @@ from PySide6.QtWidgets import (
 
 from ...core.models import Config, Control
 from ..i18n import tr
+from .cards import icon_button
 
 MANUAL = "__manual__"
 
-CONTROL_CARD_WIDTH = 360
+CONTROL_CARD_WIDTH = 340
 
 
 class ControlSettingsDialog(QDialog):
@@ -191,8 +192,9 @@ class ControlCard(QFrame):
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setObjectName("controlCard")
-        # Cards sit in a wrapping grid, so they all keep one width.
-        self.setFixedWidth(CONTROL_CARD_WIDTH)
+        # The width comes from the contents; Section.equalize() then gives
+        # every card in the grid the same one.
+        self.setMinimumWidth(CONTROL_CARD_WIDTH)
 
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 10, 12, 10)
@@ -207,6 +209,7 @@ class ControlCard(QFrame):
         title = QVBoxLayout()
         title.setSpacing(0)
         self.name = QLabel(control.name)
+        self.name.setWordWrap(True)
         font = QFont(self.name.font())
         font.setBold(True)
         self.name.setFont(font)
@@ -242,23 +245,18 @@ class ControlCard(QFrame):
         source = QHBoxLayout()
         self.curve = QComboBox()
         self.curve.setToolTip(tr("Which curve drives this fan"))
-        # Long curve names shrink the list, not the buttons next to it.
-        self.curve.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        self.curve.setMinimumContentsLength(8)
+        # Wide enough for the longest curve name; the card grows to fit.
+        self.curve.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.curve.currentIndexChanged.connect(self._on_curve_changed)
         source.addWidget(self.curve, 1)
 
-        self.edit_curve = QToolButton()
-        self.edit_curve.setText(tr("Edit…"))
-        self.edit_curve.setToolTip(tr("Edit the selected curve"))
+        self.edit_curve = icon_button("document-edit", "✎", tr("Edit the selected curve"))
         self.edit_curve.clicked.connect(
             lambda: self.editCurveRequested.emit(self.control.curve_id)
         )
         source.addWidget(self.edit_curve)
 
-        self.settings = QToolButton()
-        self.settings.setText("⚙")
-        self.settings.setToolTip(tr("Limits, spin-up and response settings"))
+        self.settings = icon_button("configure", "⚙", tr("Limits, spin-up and response settings"))
         self.settings.clicked.connect(self._open_settings)
         source.addWidget(self.settings)
 

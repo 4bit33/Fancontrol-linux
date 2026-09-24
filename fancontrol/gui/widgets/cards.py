@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -34,6 +33,10 @@ from .flow_layout import FlowLayout, card_policy
 
 CURVE_CARD_WIDTH = 300
 SENSOR_CARD_WIDTH = 190
+
+#: Object names of the widgets that are cards, for the style sheet and for
+#: Section.equalize(); a plain label in a grid is left alone.
+CARD_NAMES = {"card", "addCard", "controlCard"}
 
 
 def small_font(widget: QWidget, delta: float = -1.0) -> QFont:
@@ -74,14 +77,19 @@ def icon_button(theme_icon: str, fallback: str, tooltip: str) -> QToolButton:
 
 
 class Card(QFrame):
-    """A rounded panel; the look comes from the application style sheet."""
+    """A rounded panel; the look comes from the application style sheet.
+
+    ``width`` is only the least it takes: a card grows to fit its text in the
+    current style and font, and :meth:`Section.equalize` then lines the cards
+    of one grid up at the widest.
+    """
 
     clicked = Signal()
 
     def __init__(self, width: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
-        self.setFixedWidth(width)
+        self.setMinimumWidth(width)
         self.setSizePolicy(card_policy())
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -128,6 +136,29 @@ class Section(QWidget):
     def add(self, widget: QWidget) -> None:
         self.flow.addWidget(widget)
 
+    def cards(self) -> list[QWidget]:
+        items = (self.flow.itemAt(i) for i in range(self.flow.count()))
+        return [item.widget() for item in items
+                if item is not None and item.widget() is not None
+                and item.widget().objectName() in CARD_NAMES]
+
+    def equalize(self) -> None:
+        """Give every card the width of the widest, so the grid lines up.
+
+        Measured, not guessed: the same card needs more room in Breeze than in
+        Fusion, and more in Ukrainian than in English.
+        """
+
+        cards = self.cards()
+        if not cards:
+            return
+        for card in cards:
+            card.ensurePolished()
+            card.setMaximumWidth(16777215)
+        width = max(max(card.minimumWidth(), card.sizeHint().width()) for card in cards)
+        for card in cards:
+            card.setFixedWidth(width)
+
     def set_count(self, count: int) -> None:
         self.count.setText(f"({count})")
 
@@ -153,6 +184,7 @@ class CurveCard(Card):
         header = QHBoxLayout()
         self.name = QLabel(curve.name)
         self.name.setFont(bold_font(self))
+        self.name.setWordWrap(True)
         self.kind = QLabel(curve_type_title(curve.type))
         self.kind.setObjectName("chip")
         self.kind.setFont(small_font(self))
@@ -273,7 +305,6 @@ class SensorCard(Card):
         self.sensor_id = sensor_id
         self.kind = kind
         self.setToolTip(tr("{id}\nDouble-click to rename", id=sensor_id))
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 10, 0)
@@ -300,8 +331,9 @@ class SensorCard(Card):
         self._paint_stripe(None)
 
     def set_name(self, name: str) -> None:
-        metrics = self.name.fontMetrics()
-        self.name.setText(metrics.elidedText(name, Qt.ElideRight, SENSOR_CARD_WIDTH - 30))
+        self.name.setWordWrap(True)
+        self.name.setText(name)
+        self.name.setToolTip(name)
 
     def _paint_stripe(self, value: float | None) -> None:
         colour = temperature_colour(value) if self.kind == "temperature" else "#3daee9"

@@ -109,7 +109,6 @@ CATALOG: dict[str, str] = {
     "Let this program drive this fan": "Дозволити програмі керувати цим вентилятором",
     "Which curve drives this fan": "Яка крива керує цим вентилятором",
     "Manual": "Вручну",
-    "Edit…": "Змінити…",
     "Edit the selected curve": "Змінити вибрану криву",
     "Limits, spin-up and response settings": "Межі, розкручування та реакція",
     "Measure where this fan stops and starts. Takes a few minutes and\n"

@@ -271,3 +271,15 @@ def _write_sample(window):
     path = Path(tempfile.mkdtemp()) / "userConfig.json"
     path.write_text(json.dumps(SAMPLE))
     return path
+
+
+def test_no_card_is_narrower_than_its_contents(window):
+    """Cards are measured, so nothing on them is cut off in any style or language."""
+
+    for section in window._sections():
+        cards = section.cards()
+        assert len({card.width() for card in cards}) <= 1, "a grid should line up"
+        for card in cards:
+            assert card.width() >= card.sizeHint().width()
+    widest = max(card.width() for section in window._sections() for card in section.cards())
+    assert window.minimumWidth() > widest

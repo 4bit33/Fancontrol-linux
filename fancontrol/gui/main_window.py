@@ -258,6 +258,46 @@ class MainWindow(QMainWindow):
         ))
         if self.latest_status:
             self._on_status(self.latest_status)
+        self._fit_minimum_width()
+
+    def _sections(self) -> list[Section]:
+        return [self.controls_section, self.curves_section,
+                self.temperatures_section, self.speeds_section]
+
+    def _fit_minimum_width(self) -> None:
+        """Never let the window get narrower than its widest card."""
+
+        widest = max((card.minimumWidth() for section in self._sections()
+                      for card in section.cards()), default=0)
+        margins = self.centralWidget().widget().layout().contentsMargins()
+        scrollbar = self.style().pixelMetric(self.style().PixelMetric.PM_ScrollBarExtent)
+        self.setMinimumWidth(widest + margins.left() + margins.right() + scrollbar + 8)
+
+    def _fit_to_screen(self) -> None:
+        """Open wide enough for three fan cards or four curves in a row,
+        if the screen allows."""
+
+        screen = self.screen().availableGeometry() if self.screen() else None
+        if screen is None:
+            return
+        spacing = self.controls_section.flow.spacing()
+        widths = [
+            per_row * card.minimumWidth() + (per_row - 1) * spacing
+            for section, per_row in ((self.controls_section, 3), (self.curves_section, 4))
+            for card in section.cards()[:1]
+        ]
+        margins = self.centralWidget().widget().layout().contentsMargins()
+        scrollbar = self.style().pixelMetric(self.style().PixelMetric.PM_ScrollBarExtent)
+        want = max(widths, default=self.width()) + margins.left() + margins.right() + scrollbar + 8
+        width = max(self.minimumWidth(), min(want, int(screen.width() * 0.95)))
+        height = min(max(self.height(), 820), int(screen.height() * 0.9))
+        self.resize(width, height)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        if not getattr(self, "_sized", False):
+            self._sized = True
+            self._fit_to_screen()
+        super().showEvent(event)
 
     def _rebuild_controls(self) -> None:
         self.controls_section.clear()
@@ -272,6 +312,7 @@ class MainWindow(QMainWindow):
             self.controls_section.add(card)
             self.cards[control.id] = card
         self.controls_section.set_count(len(visible))
+        self.controls_section.equalize()
 
         if not visible:
             empty = QLabel(tr(
@@ -298,6 +339,7 @@ class MainWindow(QMainWindow):
         add.clicked.connect(self._add_curve)
         self.curves_section.add(add)
         self.curves_section.set_count(len(self.config.curves))
+        self.curves_section.equalize()
         if self.latest_status:
             for card in self.curve_cards.values():
                 card.update_status(self.latest_status)
@@ -322,6 +364,7 @@ class MainWindow(QMainWindow):
                 section.add(card)
                 self.sensor_cards[entry["id"]] = card
             section.set_count(len(entries))
+            section.equalize()
 
     def _reload_control_cards(self) -> None:
         for card in self.cards.values():

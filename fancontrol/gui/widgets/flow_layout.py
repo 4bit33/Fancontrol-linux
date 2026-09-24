@@ -72,6 +72,9 @@ class FlowLayout(QLayout):
             if widget is not None and not widget.isVisible():
                 continue
             hint = item.sizeHint()
+            if item.hasHeightForWidth():
+                # Wrapped text: the height the card needs at its own width.
+                hint.setHeight(max(hint.height(), item.heightForWidth(hint.width())))
             if x + hint.width() > area.right() + 1 and row_height > 0:
                 x = area.x()
                 y += row_height + spacing
