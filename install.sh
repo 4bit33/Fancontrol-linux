@@ -172,6 +172,12 @@ install_program() {
         red "Installation failed."
         exit 1
     fi
+    # The window's update notice tells the user where to run git pull.
+    if [[ -d "$SOURCE_DIR/.git" ]]; then
+        printf '%s\n' "$SOURCE_DIR" > "$VENV_DIR/source-dir"
+    else
+        rm -f "$VENV_DIR/source-dir"
+    fi
 
     # Whatever the distribution could not provide comes from PyPI, into this
     # environment only.

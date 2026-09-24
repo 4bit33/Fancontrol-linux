@@ -9,12 +9,13 @@ Four sections, each a grid that wraps to the window's width:
 
 from __future__ import annotations
 
+import html
 import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Slot
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -24,12 +25,15 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGraphicsOpacityEffect,
+    QHBoxLayout,
     QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QStatusBar,
     QSystemTrayIcon,
@@ -38,9 +42,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from ..core.models import Config, validate
 from .client import BaseProxy, ProxyError
-from . import i18n
+from . import i18n, updates
 from .i18n import tr
 from .widgets.cards import CURVE_CARD_WIDTH, AddCard, CurveCard, Section, SensorCard
 from .widgets.control_card import ControlCard
@@ -101,11 +106,19 @@ class SettingsDialog(QDialog):
         self.language.setCurrentIndex(max(0, self.language.findData(self._saved_language)))
         self.language.setToolTip(tr("Kept for your user only. The window restarts to switch."))
 
+        self.check_updates = QCheckBox(tr("Tell me when a new version is out"))
+        self.check_updates.setToolTip(tr(
+            "Once a day, asks GitHub which release is the newest.\n"
+            "Nothing is downloaded or installed by itself."
+        ))
+        self.check_updates.setChecked(updates.checking_enabled())
+
         form.addRow(tr("Update every"), self.interval)
         form.addRow(tr("Force full speed above"), self.critical)
         form.addRow(tr("Speed when a sensor fails"), self.failsafe)
         form.addRow("", self.restore)
         form.addRow(tr("Language"), self.language)
+        form.addRow("", self.check_updates)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -157,14 +170,28 @@ class MainWindow(QMainWindow):
 
         self.refresh_all()
 
+        self.updates = updates.UpdateChecker(self)
+        self.updates.updateAvailable.connect(self._on_update_available)
+        # Not during start-up: the window comes first.
+        QTimer.singleShot(5000, self.updates.check)
+
     # ------------------------------------------------------------------
     # construction
 
     def _build_ui(self) -> None:
+        central = QWidget()
+        column = QVBoxLayout(central)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        self.banner = self._build_update_banner()
+        column.addWidget(self.banner)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
-        self.setCentralWidget(scroll)
+        column.addWidget(scroll, 1)
+        self.scroll = scroll
+        self.setCentralWidget(central)
 
         page = QWidget()
         page.setObjectName("page")
@@ -190,6 +217,63 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("")
         self.status_label.setEnabled(False)
         self.statusBar().addPermanentWidget(self.status_label)
+
+    def _build_update_banner(self) -> QFrame:
+        banner = QFrame()
+        banner.setObjectName("banner")
+        row = QHBoxLayout(banner)
+        row.setContentsMargins(14, 8, 10, 8)
+        icon = QLabel()
+        icon.setPixmap(QIcon.fromTheme("system-software-update",
+                                       QIcon.fromTheme("update-none")).pixmap(22, 22))
+        self.banner_text = QLabel("")
+        self.banner_text.setWordWrap(True)
+        how = QPushButton(tr("How to update"))
+        how.clicked.connect(self._show_update_steps)
+        notes = QPushButton(tr("What's new"))
+        notes.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._update_url)))
+        later = QPushButton(tr("Not now"))
+        later.setToolTip(tr("Do not mention this version again"))
+        later.clicked.connect(self._dismiss_update)
+        row.addWidget(icon)
+        row.addWidget(self.banner_text, 1)
+        for button in (how, notes, later):
+            row.addWidget(button)
+        banner.hide()
+        self._update_version = ""
+        self._update_url = updates.RELEASES_PAGE
+        return banner
+
+    def _on_update_available(self, version: str, url: str) -> None:
+        self._update_version, self._update_url = version, url
+        self.banner_text.setText(tr(
+            "<b>Version {version} is out.</b> You have {current}.",
+            version=version, current=__version__,
+        ))
+        self.banner.show()
+
+    def _dismiss_update(self) -> None:
+        self.updates.dismiss(self._update_version)
+        self.banner.hide()
+
+    def _show_update_steps(self) -> None:
+        command = updates.update_command(updates.source_dir())
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("How to update"))
+        box.setIcon(QMessageBox.Information)
+        box.setTextFormat(Qt.RichText)
+        box.setText(tr(
+            "Run this in a terminal. It fetches the new version, installs it and "
+            "restarts the service; the fans are handed to the firmware for a moment "
+            "while it does."
+        ) + f"<pre>{html.escape(command)}</pre>")
+        box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        copy = box.addButton(tr("Copy the command"), QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Close)
+        box.exec()
+        if box.clickedButton() is copy:
+            QApplication.clipboard().setText(command)
+            self.statusBar().showMessage(tr("Copied"), 2000)
 
     def _build_actions(self) -> None:
         toolbar = QToolBar(tr("Main"))
@@ -292,7 +376,7 @@ class MainWindow(QMainWindow):
 
         widest = max((card.minimumWidth() for section in self._sections()
                       for card in section.cards()), default=0)
-        margins = self.centralWidget().widget().layout().contentsMargins()
+        margins = self.scroll.widget().layout().contentsMargins()
         scrollbar = self.style().pixelMetric(self.style().PixelMetric.PM_ScrollBarExtent)
         self.setMinimumWidth(widest + margins.left() + margins.right() + scrollbar + 8)
 
@@ -309,7 +393,7 @@ class MainWindow(QMainWindow):
             for section, per_row in ((self.controls_section, 3), (self.curves_section, 4))
             for card in section.cards()[:1]
         ]
-        margins = self.centralWidget().widget().layout().contentsMargins()
+        margins = self.scroll.widget().layout().contentsMargins()
         scrollbar = self.style().pixelMetric(self.style().PixelMetric.PM_ScrollBarExtent)
         want = max(widths, default=self.width()) + margins.left() + margins.right() + scrollbar + 8
         width = max(self.minimumWidth(), min(want, int(screen.width() * 0.95)))
@@ -670,6 +754,13 @@ class MainWindow(QMainWindow):
             return
         dialog.apply_to(self.config)
         self._push_config()
+
+        if dialog.check_updates.isChecked() != updates.checking_enabled():
+            updates.set_checking_enabled(dialog.check_updates.isChecked())
+            if dialog.check_updates.isChecked():
+                self.updates.check()
+            else:
+                self.banner.hide()
 
         language = dialog.chosen_language()
         if language is None:

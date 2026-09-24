@@ -34,6 +34,13 @@ QFrame#addCard {
 QFrame#addCard:hover {
     border-color: palette(highlight);
 }
+QFrame#banner {
+    background: palette(highlight);
+    color: palette(highlighted-text);
+}
+QFrame#banner QLabel {
+    color: palette(highlighted-text);
+}
 QLabel#chip {
     border-radius: 8px;
     padding: 1px 8px;

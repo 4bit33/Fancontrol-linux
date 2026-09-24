@@ -56,6 +56,24 @@ CATALOG: dict[str, str] = {
     "Force full speed above": "Повна швидкість вище",
     "Speed when a sensor fails": "Швидкість, якщо датчик збоїть",
     "Language": "Мова",
+    "Tell me when a new version is out": "Повідомляти, коли вийде нова версія",
+    "Once a day, asks GitHub which release is the newest.\n"
+    "Nothing is downloaded or installed by itself.":
+        "Раз на день питає GitHub, яка версія найновіша.\n"
+        "Сама програма нічого не завантажує й не встановлює.",
+    "<b>Version {version} is out.</b> You have {current}.":
+        "<b>Вийшла версія {version}.</b> У вас {current}.",
+    "How to update": "Як оновити",
+    "What's new": "Що нового",
+    "Not now": "Не зараз",
+    "Do not mention this version again": "Більше не нагадувати про цю версію",
+    "Run this in a terminal. It fetches the new version, installs it and restarts the "
+    "service; the fans are handed to the firmware for a moment while it does.":
+        "Виконайте це в терміналі. Команда завантажить нову версію, встановить її й "
+        "перезапустить службу; на цей час вентилятори ненадовго перейдуть під керування "
+        "прошивки.",
+    "Copy the command": "Скопіювати команду",
+    "Copied": "Скопійовано",
     "As the system": "Як у системі",
     "Kept for your user only. The window restarts to switch.":
         "Зберігається лише для вашого користувача. Для зміни вікно перезапуститься.",
