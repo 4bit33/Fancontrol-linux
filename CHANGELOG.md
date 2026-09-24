@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased (1.2.0)
+
+### Window
+
+* Every fan card has a switch for who drives the fan: **Firmware**, **My
+  curve**, or **Both** — the firmware while it is cool and your curve from a
+  temperature you set on the card. In "Both" the card says who has the fan
+  right now and when that changes. This replaces the enable checkbox and the
+  "firmware runs it below" field that was tucked away in the fan's settings;
+  configurations are unchanged.
+
 ## 1.1.1 — 2026-09-24
 
 ### Installing

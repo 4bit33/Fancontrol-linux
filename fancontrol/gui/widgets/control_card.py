@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -30,6 +31,55 @@ from .cards import icon_button
 MANUAL = "__manual__"
 
 CONTROL_CARD_WIDTH = 340
+
+#: Who drives a fan. Stored as ``enabled`` and ``firmware_below`` on the
+#: control, which the daemon already understands.
+FIRMWARE = "firmware"   # not managed: the firmware's own curve
+CURVE = "curve"         # always the chosen curve
+BOTH = "both"           # the firmware while cool, the curve above a temperature
+
+
+def control_mode(control: Control) -> str:
+    if not control.enabled:
+        return FIRMWARE
+    return BOTH if control.firmware_below > 0 else CURVE
+
+
+def is_gpu(control: Control, inventory: dict) -> bool:
+    return _output_device(control, inventory).get("chip", "").startswith("nvidia") \
+        or control.output_id.startswith("nvidia")
+
+
+def _output_device(control: Control, inventory: dict) -> dict:
+    for entry in inventory.get("controls", []):
+        if entry["id"] == control.output_id:
+            return entry.get("device", {})
+    return {}
+
+
+def default_handover_sensor(control: Control, inventory: dict) -> str:
+    """The temperature a "both" fan most likely wants: its own chip's (a GPU
+    fan follows the GPU), otherwise the CPU package."""
+
+    temperatures = inventory.get("temperatures", [])
+    device = _output_device(control, inventory)
+    for entry in temperatures:
+        if device.get("key") and entry.get("device", {}).get("key") == device.get("key"):
+            return entry["id"]
+    cpu_chips = ("coretemp", "k10temp", "zenpower")
+    preferred = ("package", "tctl", "tdie")
+    cpu = [e for e in temperatures if e.get("device", {}).get("chip", "").startswith(cpu_chips)]
+    for entry in cpu:
+        if entry["name"].lower().startswith(preferred):
+            return entry["id"]
+    if cpu:
+        return cpu[0]["id"]
+    return temperatures[0]["id"] if temperatures else ""
+
+
+def default_threshold(control: Control, inventory: dict) -> float:
+    """GPUs idle around 35-40 °C; CPUs sit higher and swing more."""
+    return 40.0 if is_gpu(control, inventory) else 50.0
 
 
 class ControlSettingsDialog(QDialog):
@@ -101,22 +151,14 @@ class ControlSettingsDialog(QDialog):
         form.addRow(tr("Slow down limit"), self.step_down)
         form.addRow(tr("Fan tachometer"), self.fan_sensor)
 
-        self.firmware_below = self._spin(0, 100, control.firmware_below, " °C")
-        self.firmware_below.setSpecialValueText(tr("never"))
-        self.firmware_below.setToolTip(
-            tr("Below this temperature the firmware runs the fan instead - for a\n"
-            "GPU that means its own curve, which can stop the fans at idle.\n"
-            "Taken back 3 °C before it would be handed over again.")
+        self.firmware_hysteresis = self._spin(0.5, 20, control.firmware_hysteresis, " °C",
+                                              decimals=1)
+        self.firmware_hysteresis.setToolTip(
+            tr("In “Both” mode the firmware gets the fan back only once the\n"
+            "temperature is this far below the threshold, so it does not switch\n"
+            "back and forth around it.")
         )
-        self.firmware_sensor = QComboBox()
-        for entry in inventory.get("temperatures", []):
-            self.firmware_sensor.addItem(
-                f"{entry['name']}  ({entry['device']['chip']})", entry["id"]
-            )
-        index = self.firmware_sensor.findData(control.firmware_sensor_id)
-        self.firmware_sensor.setCurrentIndex(max(0, index))
-        form.addRow(tr("Firmware runs it below"), self.firmware_below)
-        form.addRow(tr("…measured on"), self.firmware_sensor)
+        form.addRow(tr("Hand-back margin"), self.firmware_hysteresis)
         layout.addLayout(form)
 
         if control.calibration:
@@ -168,10 +210,7 @@ class ControlSettingsDialog(QDialog):
         control.step_up = self.step_up.value()
         control.step_down = self.step_down.value()
         control.fan_sensor_id = self.fan_sensor.currentData()
-        control.firmware_below = self.firmware_below.value()
-        control.firmware_sensor_id = (
-            self.firmware_sensor.currentData() if control.firmware_below > 0 else ""
-        )
+        control.firmware_hysteresis = self.firmware_hysteresis.value()
 
 
 class ControlCard(QFrame):
@@ -200,11 +239,7 @@ class ControlCard(QFrame):
         grid.setContentsMargins(12, 10, 12, 10)
         grid.setHorizontalSpacing(10)
 
-        self.enabled = QCheckBox()
-        self.enabled.setChecked(control.enabled)
-        self.enabled.setToolTip(tr("Let this program drive this fan"))
-        self.enabled.toggled.connect(self._on_enabled)
-        grid.addWidget(self.enabled, 0, 0)
+        self._last_threshold = 0.0
 
         title = QVBoxLayout()
         title.setSpacing(0)
@@ -220,7 +255,7 @@ class ControlCard(QFrame):
         self.hardware.setFont(small)
         title.addWidget(self.name)
         title.addWidget(self.hardware)
-        grid.addLayout(title, 0, 1)
+        grid.addLayout(title, 0, 0, 1, 2)
 
         self.reading = QLabel("—")
         reading_font = QFont(self.reading.font())
@@ -241,6 +276,36 @@ class ControlCard(QFrame):
         self.bar.setTextVisible(False)
         self.bar.setFixedHeight(6)
         grid.addWidget(self.bar, 1, 0, 1, 2)
+
+        modes = QHBoxLayout()
+        modes.setSpacing(2)
+        modes_label = QLabel(tr("Driven by"))
+        modes_label.setEnabled(False)
+        modes_label.setFont(small)
+        modes.addWidget(modes_label)
+        modes.addSpacing(6)
+        self.mode_group = QButtonGroup(self)
+        self.mode_buttons: dict[str, QToolButton] = {}
+        for mode, text, tip in (
+            (FIRMWARE, tr("Firmware"),
+             tr("The motherboard or graphics card runs this fan by itself,\n"
+                "exactly as without this program.")),
+            (CURVE, tr("My curve"), tr("The curve chosen below always drives this fan.")),
+            (BOTH, tr("Both"),
+             tr("The firmware while it is cool, your curve from a temperature\n"
+                "you choose. For a graphics card that keeps its fans stopped at idle.")),
+        ):
+            button = QToolButton()
+            button.setObjectName("segment")
+            button.setText(text)
+            button.setToolTip(tip)
+            button.setCheckable(True)
+            self.mode_group.addButton(button)
+            self.mode_buttons[mode] = button
+            button.clicked.connect(lambda _checked, m=mode: self._on_mode(m))
+            modes.addWidget(button)
+        modes.addStretch(1)
+        grid.addLayout(modes, 2, 0, 1, 3)
 
         source = QHBoxLayout()
         self.curve = QComboBox()
@@ -268,7 +333,36 @@ class ControlCard(QFrame):
         )
         self.calibrate.clicked.connect(lambda: self.calibrateRequested.emit(self.control.id))
         source.addWidget(self.calibrate)
-        grid.addLayout(source, 2, 0, 1, 3)
+        grid.addLayout(source, 3, 0, 1, 3)
+
+        self.handover_row = QWidget()
+        # Two lines, threshold then sensor, so the row is no wider than the
+        # curve row above it.
+        handover = QGridLayout(self.handover_row)
+        handover.setContentsMargins(0, 0, 0, 0)
+        handover.setVerticalSpacing(4)
+        below = QLabel(tr("Firmware below"))
+        self.threshold = QDoubleSpinBox()
+        self.threshold.setRange(1, 110)
+        self.threshold.setDecimals(0)
+        self.threshold.setSuffix(" °C")
+        self.threshold.setToolTip(tr("From this temperature up, your curve drives the fan."))
+        self.threshold.valueChanged.connect(self._on_threshold)
+        on = QLabel(tr("on"))
+        self.handover_sensor = QComboBox()
+        # Sensor names run long ("NVIDIA GeForce RTX 3070 GPU"); let the list
+        # shorten them rather than widen every card in the grid.
+        self.handover_sensor.setSizeAdjustPolicy(
+            QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.handover_sensor.setMinimumContentsLength(10)
+        self.handover_sensor.setToolTip(tr("The temperature that decides who drives the fan"))
+        self.handover_sensor.currentIndexChanged.connect(self._on_handover_sensor)
+        handover.addWidget(below, 0, 0)
+        handover.addWidget(self.threshold, 0, 1, Qt.AlignLeft)
+        handover.addWidget(on, 1, 0)
+        handover.addWidget(self.handover_sensor, 1, 1)
+        handover.setColumnStretch(1, 1)
+        grid.addWidget(self.handover_row, 4, 0, 1, 3)
 
         self.manual_row = QWidget()
         manual_layout = QHBoxLayout(self.manual_row)
@@ -281,12 +375,19 @@ class ControlCard(QFrame):
         self.slider_label.setMinimumWidth(38)
         manual_layout.addWidget(self.slider, 1)
         manual_layout.addWidget(self.slider_label)
-        grid.addWidget(self.manual_row, 3, 0, 1, 3)
+        grid.addWidget(self.manual_row, 5, 0, 1, 3)
+
+        # Who has the fan right now, in the modes where that can change.
+        self.state = QLabel("")
+        self.state.setWordWrap(True)
+        self.state.setFont(small)
+        self.state.setEnabled(False)
+        grid.addWidget(self.state, 6, 0, 1, 3)
 
         self.note = QLabel("")
         self.note.setWordWrap(True)
         self.note.setFont(small)
-        grid.addWidget(self.note, 4, 0, 1, 3)
+        grid.addWidget(self.note, 7, 0, 1, 3)
 
         grid.setColumnStretch(1, 1)
         self.reload(control, config, inventory)
@@ -309,7 +410,20 @@ class ControlCard(QFrame):
 
         self.name.setText(control.name)
         self.hardware.setText(self._hardware_label())
-        self.enabled.setChecked(control.enabled)
+        if control.firmware_below > 0:
+            self._last_threshold = control.firmware_below
+
+        names = config.sensor_names
+        self.handover_sensor.clear()
+        for entry in inventory.get("temperatures", []):
+            label = names.get(entry["id"]) or entry["name"]
+            self.handover_sensor.addItem(label, entry["id"])
+            self.handover_sensor.setItemData(
+                self.handover_sensor.count() - 1,
+                f"{label}  ({entry['device']['chip']})", Qt.ToolTipRole)
+        sensor = control.firmware_sensor_id or default_handover_sensor(control, inventory)
+        self.handover_sensor.setCurrentIndex(max(0, self.handover_sensor.findData(sensor)))
+        self.threshold.setValue(control.firmware_below or self._threshold_to_offer())
 
         self.curve.clear()
         self.curve.addItem(tr("Manual"), MANUAL)
@@ -323,18 +437,28 @@ class ControlCard(QFrame):
         self._update_mode()
         self._loading = False
 
+    def _threshold_to_offer(self) -> float:
+        return self._last_threshold or default_threshold(self.control, self.inventory)
+
     def _update_mode(self) -> None:
+        mode = control_mode(self.control)
+        self.mode_buttons[mode].setChecked(True)
         manual = not self.control.curve_id
+        managed = mode != FIRMWARE
         self.manual_row.setVisible(manual)
-        self.edit_curve.setEnabled(not manual)
+        self.edit_curve.setEnabled(managed and not manual)
         for widget in (self.curve, self.settings, self.calibrate, self.bar):
-            widget.setEnabled(self.control.enabled)
-        self.manual_row.setEnabled(self.control.enabled)
+            widget.setEnabled(managed)
+        self.manual_row.setEnabled(managed)
+        self.handover_row.setVisible(mode == BOTH)
+        if mode == FIRMWARE:
+            self.state.setText(tr("The firmware runs this fan; this program only watches it."))
+        self.state.setVisible(mode != CURVE)
 
     # ------------------------------------------------------------------
     # live values
 
-    def update_status(self, entry: dict) -> None:
+    def update_status(self, entry: dict, temperatures: dict | None = None) -> None:
         percent = entry.get("applied_percent")
         if percent is None:
             percent = 0.0
@@ -347,12 +471,12 @@ class ControlCard(QFrame):
         else:
             self.rpm.setText(tr("{rpm} rpm", rpm=int(rpm)))
 
-        palette = self.palette()
+        if control_mode(self.control) == BOTH:
+            self.state.setText(self._handover_state(entry, temperatures or {}))
+
         note = ""
         colour = ""
-        if entry.get("with_firmware"):
-            note = tr("Cool enough: the firmware is running this fan.")
-        elif entry.get("paused"):
+        if entry.get("paused"):
             note, colour = tr("Calibrating — the curve is standing down."), "#f67400"
         elif entry.get("error"):
             note, colour = entry["error"], "#da4453"
@@ -369,17 +493,55 @@ class ControlCard(QFrame):
         self.note.setVisible(bool(note))
         self.note.setStyleSheet(f"color: {colour};" if colour else "")
 
+    def _handover_state(self, entry: dict, temperatures: dict) -> str:
+        control = self.control
+        temperature = temperatures.get(control.firmware_sensor_id)
+        if temperature is None:
+            return tr("Sensor unavailable — your curve drives the fan to be safe.")
+        values = dict(
+            temperature=f"{temperature:.0f}",
+            threshold=f"{control.firmware_below:.0f}",
+            back=f"{control.firmware_below - control.firmware_hysteresis:.0f}",
+        )
+        if entry.get("with_firmware"):
+            return tr("Now: firmware · {temperature}\u00a0°C, your curve takes over at "
+                      "{threshold}\u00a0°C", **values)
+        return tr("Now: your curve · {temperature}\u00a0°C, back to the firmware below "
+                  "{back}\u00a0°C", **values)
+
     def set_overridden(self, overridden: bool) -> None:
         self._overridden = overridden
 
     # ------------------------------------------------------------------
     # editing
 
-    def _on_enabled(self, checked: bool) -> None:
+    def _on_mode(self, mode: str) -> None:
         if self._loading:
             return
-        self.control.enabled = checked
+        control = self.control
+        if control.firmware_below > 0:
+            self._last_threshold = control.firmware_below
+        control.enabled = mode != FIRMWARE
+        if mode == BOTH:
+            control.firmware_below = self.threshold.value() or self._threshold_to_offer()
+            control.firmware_sensor_id = self.handover_sensor.currentData() or ""
+        elif mode == CURVE:
+            control.firmware_below = 0.0
+        # In FIRMWARE the threshold is kept, so "Both" comes back as it was.
         self._update_mode()
+        self.configEdited.emit()
+
+    def _on_threshold(self, value: float) -> None:
+        if self._loading or control_mode(self.control) != BOTH:
+            return
+        self.control.firmware_below = float(value)
+        self._last_threshold = float(value)
+        self.configEdited.emit()
+
+    def _on_handover_sensor(self, _index: int) -> None:
+        if self._loading or control_mode(self.control) != BOTH:
+            return
+        self.control.firmware_sensor_id = self.handover_sensor.currentData() or ""
         self.configEdited.emit()
 
     def _on_curve_changed(self, _index: int) -> None:

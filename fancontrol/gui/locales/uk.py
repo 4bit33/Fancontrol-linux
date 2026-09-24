@@ -131,7 +131,6 @@ CATALOG: dict[str, str] = {
     "{name}   ·  {score} match": "{name}   ·  збіг {score}",
 
     # -- fan card -------------------------------------------------------
-    "Let this program drive this fan": "Дозволити програмі керувати цим вентилятором",
     "Which curve drives this fan": "Яка крива керує цим вентилятором",
     "Manual": "Вручну",
     "Edit the selected curve": "Змінити вибрану криву",
@@ -141,8 +140,6 @@ CATALOG: dict[str, str] = {
         "Виміряти, де вентилятор зупиняється і рушає. Займає кілька хвилин,\n"
         "вентилятор тим часом розкручується й сповільнюється.",
     "{rpm} rpm": "{rpm} об/хв",
-    "Cool enough: the firmware is running this fan.":
-        "Досить холодно: цим вентилятором керує прошивка.",
     "Calibrating — the curve is standing down.": "Калібрування — крива тимчасово не діє.",
     "Reads 0 rpm while being driven — raise the minimum or the start speed.":
         "Показує 0 об/хв, хоча мав би крутитися — підніміть мінімальну швидкість "
@@ -150,6 +147,43 @@ CATALOG: dict[str, str] = {
     "No matching hardware on this machine.": "На цьому комп'ютері немає такого обладнання.",
     "Spinning up…": "Розкручується…",
     "Driven by hand — the curve is not in control.": "Керується вручну — крива не діє.",
+
+    # -- who drives a fan -----------------------------------------------
+    "Driven by": "Керує",
+    "Firmware": "Прошивка",
+    "My curve": "Моя крива",
+    "Both": "Разом",
+    "The motherboard or graphics card runs this fan by itself,\n"
+    "exactly as without this program.":
+        "Материнська плата чи відеокарта керує вентилятором сама,\n"
+        "так само як без цієї програми.",
+    "The curve chosen below always drives this fan.":
+        "Вентилятором завжди керує вибрана нижче крива.",
+    "The firmware while it is cool, your curve from a temperature\n"
+    "you choose. For a graphics card that keeps its fans stopped at idle.":
+        "Поки холодно — прошивка, з вибраної температури — ваша крива.\n"
+        "Для відеокарти це означає, що в простої її вентилятори стоять.",
+    "Firmware below": "Прошивка до",
+    "on": "за датчиком",
+    "From this temperature up, your curve drives the fan.":
+        "Від цієї температури й вище вентилятором керує ваша крива.",
+    "The temperature that decides who drives the fan":
+        "Температура, за якою вирішується, хто керує вентилятором",
+    "The firmware runs this fan; this program only watches it.":
+        "Вентилятором керує прошивка; програма лише спостерігає.",
+    "Now: firmware · {temperature}\u00a0°C, your curve takes over at {threshold}\u00a0°C":
+        "Зараз: прошивка · {temperature}\u00a0°C, ваша крива ввімкнеться з {threshold}\u00a0°C",
+    "Now: your curve · {temperature}\u00a0°C, back to the firmware below {back}\u00a0°C":
+        "Зараз: ваша крива · {temperature}\u00a0°C, прошивці повернеться нижче {back}\u00a0°C",
+    "Sensor unavailable — your curve drives the fan to be safe.":
+        "Датчик недоступний — про всяк випадок керує ваша крива.",
+    "Hand-back margin": "Запас повернення",
+    "In “Both” mode the firmware gets the fan back only once the\n"
+    "temperature is this far below the threshold, so it does not switch\n"
+    "back and forth around it.":
+        "У режимі «Разом» прошивка отримує вентилятор назад лише тоді, коли\n"
+        "температура опуститься на стільки нижче порога, — щоб керування\n"
+        "не перемикалося туди-сюди.",
 
     # -- fan settings ---------------------------------------------------
     "{name} — settings": "{name} — налаштування",
@@ -182,13 +216,6 @@ CATALOG: dict[str, str] = {
         "Тахометр на тому ж роз'ємі. Показує оберти й попереджає,\n"
         "коли вентилятор стоїть, хоча мав би крутитися.",
     "— none —": "— немає —",
-    "never": "ніколи",
-    "Below this temperature the firmware runs the fan instead - for a\n"
-    "GPU that means its own curve, which can stop the fans at idle.\n"
-    "Taken back 3 °C before it would be handed over again.":
-        "Нижче цієї температури вентилятором керує прошивка — для\n"
-        "відеокарти це її власна крива, що може зупиняти вентилятори в простої.\n"
-        "Керування повертається на 3 °C вище порогу.",
     "Minimum speed": "Мінімальна швидкість",
     "Maximum speed": "Максимальна швидкість",
     "Offset": "Зсув",
@@ -198,8 +225,6 @@ CATALOG: dict[str, str] = {
     "Speed up limit": "Межа прискорення",
     "Slow down limit": "Межа сповільнення",
     "Fan tachometer": "Тахометр",
-    "Firmware runs it below": "Прошивка керує нижче",
-    "…measured on": "…за датчиком",
     "Measured: never turned at any speed.": "Виміряно: не крутився на жодній швидкості.",
     "Measured: turns even at {percent}%, up to {rpm} rpm.":
         "Виміряно: крутиться навіть на {percent}%, до {rpm} об/хв.",

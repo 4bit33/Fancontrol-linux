@@ -41,6 +41,17 @@ QFrame#banner {
 QFrame#banner QLabel {
     color: palette(highlighted-text);
 }
+QToolButton#segment {
+    border: 1px solid palette(mid);
+    border-radius: 4px;
+    padding: 2px 10px;
+    background: palette(button);
+}
+QToolButton#segment:checked {
+    background: palette(highlight);
+    color: palette(highlighted-text);
+    border-color: palette(highlight);
+}
 QLabel#chip {
     border-radius: 8px;
     padding: 1px 8px;

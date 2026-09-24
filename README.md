@@ -30,10 +30,11 @@ to.
   "ignore hysteresis past the ends of the curve".
 * **Per-fan settings** — minimum, maximum, offset, stop point, spin-up kick,
   and limits on how fast the speed may rise and fall.
-* **Firmware while cool** — below a temperature you choose, a fan is handed
-  back to the firmware. For a graphics card that means its own curve,
-  including stopping the fans at idle; from the threshold up, this program
-  takes over.
+* **Who drives each fan** — a switch on every fan card: **Firmware** (the
+  board or graphics card on its own, as without this program), **My curve**,
+  or **Both**: the firmware while it is cool and your curve from a
+  temperature you choose. For a graphics card "Both" keeps its fans stopped
+  at idle.
 * **Calibration** — steps each fan down and up, waits for the speed to settle
   at every step, finds where it stops and where it starts, and suggests a
   minimum, start and stop point. Runs in the background.
@@ -203,9 +204,9 @@ fan back to the firmware — handy for checking whether a problem is in your
 curve.
 
 On the graph: drag a point to move it, double-click to add one, right-click to
-remove one. ⚙ on a fan's card opens its minimum, start, rate limits and the
-temperature below which the firmware runs it. Double-click a sensor to rename
-it.
+remove one. On a fan's card, **Firmware / My curve / Both** chooses who
+drives it, and in "Both" the card shows who has it right now; ⚙ opens its
+minimum, start and rate limits. Double-click a sensor to rename it.
 
 Right-click any card to hide it — an unused curve, a sensor you never look
 at, an empty fan header. Hiding only tidies the window: a hidden curve still

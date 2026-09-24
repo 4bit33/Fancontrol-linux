@@ -119,7 +119,7 @@ def test_enabling_a_control_reaches_the_service(window):
     card = next(c for c in window.cards.values() if isinstance(c, ControlCard))
     assert card.control.enabled is False
 
-    card.enabled.setChecked(True)
+    card.mode_buttons["curve"].click()
     window._push_timer.stop()
     window._push_config()
 
@@ -358,3 +358,79 @@ def test_restarting_drops_the_old_language_argument(window, monkeypatch):
     monkeypatch.setattr("fancontrol.gui.main_window.QApplication.quit", lambda: None)
     window._restart()
     assert launched == [["/usr/bin/fancontrol-gui", "--session"]]
+
+
+
+def _first_card(window):
+    return next(iter(window.cards.values()))
+
+
+def test_the_mode_switch_maps_onto_the_control(window):
+    card = _first_card(window)
+    control = card.control
+
+    card.mode_buttons["curve"].click()
+    assert control.enabled and control.firmware_below == 0
+    assert not card.handover_row.isVisibleTo(card)
+
+    card.mode_buttons["both"].click()
+    assert control.enabled and control.firmware_below > 0
+    assert control.firmware_sensor_id
+    assert card.handover_row.isVisibleTo(card)
+
+    card.threshold.setValue(47)
+    assert control.firmware_below == 47
+
+    card.mode_buttons["firmware"].click()
+    assert control.enabled is False
+    assert not card.curve.isEnabled()
+
+    # Back to "both": the threshold chosen before is still there.
+    card.mode_buttons["both"].click()
+    assert control.firmware_below == 47
+
+
+def test_both_mode_reaches_the_service(window):
+    card = _first_card(window)
+    card.mode_buttons["both"].click()
+    card.threshold.setValue(45)
+    saved = _saved(window)
+    entry = next(c for c in saved["controls"] if c["id"] == card.control.id)
+    assert entry["enabled"] is True
+    assert entry["firmware_below"] == 45
+    assert entry["firmware_sensor_id"] == card.control.firmware_sensor_id
+
+
+def test_the_card_says_who_has_the_fan(window):
+    card = _first_card(window)
+    card.mode_buttons["both"].click()
+    card.threshold.setValue(60)
+    sensor = card.control.firmware_sensor_id
+
+    card.update_status({"applied_percent": 0, "with_firmware": True}, {sensor: 41.0})
+    assert "41" in card.state.text() and "60" in card.state.text()
+
+    card.update_status({"applied_percent": 30, "with_firmware": False}, {sensor: 62.0})
+    assert "62" in card.state.text() and "57" in card.state.text()  # 60 - 3
+
+
+def test_a_gpu_fan_follows_its_own_gpu_by_default():
+    from fancontrol.core.models import Control
+    from fancontrol.gui.widgets.control_card import default_handover_sensor, default_threshold
+
+    gpu = {"key": "nvidia:0", "chip": "nvidia"}
+    inventory = {
+        "controls": [{"id": "nvidia:0:fan0", "device": gpu}],
+        "temperatures": [
+            {"id": "hwmon:coretemp:temp1", "name": "Package id 0",
+             "device": {"key": "coretemp", "chip": "coretemp"}},
+            {"id": "nvidia:0:temp", "name": "GPU", "device": gpu},
+        ],
+    }
+    control = Control(id="g", name="GPU", output_id="nvidia:0:fan0")
+    assert default_handover_sensor(control, inventory) == "nvidia:0:temp"
+    assert default_threshold(control, inventory) == 40
+
+    board = Control(id="b", name="Case", output_id="hwmon:it87:pwm2")
+    assert default_handover_sensor(board, inventory) == "hwmon:coretemp:temp1"
+    assert default_threshold(board, inventory) == 50

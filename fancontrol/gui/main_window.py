@@ -576,7 +576,7 @@ class MainWindow(QMainWindow):
             card = self.cards.get(control_id)
             if card is not None:
                 card.set_overridden(control_id in self._overrides)
-                card.update_status(entry)
+                card.update_status(entry, status.get("temperatures", {}))
 
         for card in self.curve_cards.values():
             card.update_status(status)
