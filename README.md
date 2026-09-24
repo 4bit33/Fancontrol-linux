@@ -101,6 +101,25 @@ The issue template asks for the rest.
 
 ## Installing
 
+### Fedora: from COPR
+
+```bash
+sudo dnf copr enable 4bit33/fancontrol-linux
+sudo dnf install fancontrol-linux
+sudo systemctl enable --now fancontrold
+```
+
+Updates then come with the rest of the system (`dnf upgrade`, or Discover),
+and the daemon restarts on its own. With the NVIDIA driver installed,
+`fancontrol-linux-nvidia` comes along automatically — it gives the daemon the
+permissions the driver needs to set GPU fan speeds.
+
+Switching from `install.sh` to the package: `sudo ./install.sh --uninstall`
+first (your configuration in `/etc/fancontrol-linux` stays), then the commands
+above.
+
+### Any distribution: install.sh
+
 ```bash
 git clone https://github.com/4bit33/Fancontrol-linux.git
 cd Fancontrol-linux
@@ -124,11 +143,12 @@ sudo ./install.sh --uninstall        # remove it (the configuration stays in /et
 ### Updating
 
 ```bash
-cd Fancontrol-linux && git pull && sudo ./install.sh
+sudo dnf upgrade --refresh fancontrol-linux             # from COPR
+cd Fancontrol-linux && git pull && sudo ./install.sh    # with install.sh
 ```
 
 Your configuration is kept. The window tells you when a new version is out,
-with this command ready to copy: once a day it asks GitHub which release is
+with the right command ready to copy: once a day it asks GitHub which release is
 the newest. It never downloads or installs anything by itself — the daemon
 runs as root, and that is a decision for you, not for a background job. The
 check can be switched off in Settings.

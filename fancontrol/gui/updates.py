@@ -61,9 +61,17 @@ def source_dir() -> Path | None:
     return Path(text) if text and Path(text, ".git").is_dir() else None
 
 
-def update_command(source: Path | None = None) -> str:
-    """What to type to update: install.sh restarts the daemon itself."""
+def installed_by_package() -> bool:
+    """True when the program came from the RPM rather than install.sh."""
+    return (Path(sys.prefix) / "share" / "fancontrol-linux" / "installed-by").exists()
 
+
+def update_command(source: Path | None = None, packaged: bool | None = None) -> str:
+    """What to type to update. Both install.sh and the package restart the
+    daemon themselves."""
+
+    if packaged if packaged is not None else installed_by_package():
+        return "sudo dnf upgrade --refresh fancontrol-linux"
     folder = shlex.quote(str(source)) if source else "<the folder you installed from>"
     return f"cd {folder} && git pull && sudo ./install.sh"
 

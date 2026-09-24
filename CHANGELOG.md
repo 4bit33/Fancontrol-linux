@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1 — 2026-09-24
+
+### Installing
+
+* A Fedora package, built in COPR for Fedora 43, 44, 45 and rawhide:
+  `sudo dnf copr enable 4bit33/fancontrol-linux`, then
+  `sudo dnf install fancontrol-linux`. Updates arrive with `dnf upgrade` and
+  restart the daemon. `fancontrol-linux-nvidia` is pulled in automatically
+  where the NVIDIA driver is installed.
+* The update notice gives the `dnf` command when the program came from the
+  package, and `install.sh` refuses to write over the package.
+
 ## 1.1.0 — 2026-09-24
 
 ### Window

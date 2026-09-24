@@ -98,6 +98,24 @@ sudo ./tools/pwm-check.sh
 
 ## Встановлення
 
+### Fedora: з COPR
+
+```bash
+sudo dnf copr enable 4bit33/fancontrol-linux
+sudo dnf install fancontrol-linux
+sudo systemctl enable --now fancontrold
+```
+
+Далі оновлення приходять разом з рештою системи (`dnf upgrade` або Discover),
+а служба перезапускається сама. Якщо стоїть драйвер NVIDIA, разом із програмою
+автоматично встановиться `fancontrol-linux-nvidia` — він дає службі права, без
+яких драйвер не дозволяє керувати вентиляторами відеокарти.
+
+Перехід з `install.sh` на пакет: спершу `sudo ./install.sh --uninstall`
+(налаштування в `/etc/fancontrol-linux` лишаться), потім команди вище.
+
+### Будь-який дистрибутив: install.sh
+
 ```bash
 git clone https://github.com/4bit33/Fancontrol-linux.git
 cd Fancontrol-linux
@@ -121,11 +139,12 @@ sudo ./install.sh --uninstall        # прибрати (конфіг лишит
 ### Оновлення
 
 ```bash
-cd Fancontrol-linux && git pull && sudo ./install.sh
+sudo dnf upgrade --refresh fancontrol-linux             # з COPR
+cd Fancontrol-linux && git pull && sudo ./install.sh    # через install.sh
 ```
 
 Налаштування зберігаються. Коли виходить нова версія, вікно про це скаже й
-дасть скопіювати цю команду: раз на день воно питає GitHub, яка версія
+дасть скопіювати потрібну команду: раз на день воно питає GitHub, яка версія
 найновіша. Саме нічого не завантажує й не встановлює — демон працює від root,
 і таке рішення має ухвалювати людина, а не фоновий процес. Перевірку можна
 вимкнути в Налаштуваннях.

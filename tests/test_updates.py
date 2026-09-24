@@ -101,7 +101,7 @@ def test_switched_off_means_no_request_and_no_notice(checker, store, monkeypatch
 
 
 def test_the_command_points_at_the_clone(tmp_path):
-    command = updates.update_command(tmp_path / "my clone")
+    command = updates.update_command(tmp_path / "my clone", packaged=False)
     assert command.startswith(f"cd '{tmp_path}/my clone' && git pull")
     assert command.endswith("sudo ./install.sh")
 
@@ -122,3 +122,7 @@ class _Recorder:
                     pass
 
         return _Reply()
+
+
+def test_the_package_is_updated_with_dnf():
+    assert updates.update_command(None, packaged=True) == "sudo dnf upgrade --refresh fancontrol-linux"

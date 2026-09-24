@@ -239,7 +239,17 @@ open(target, "w").write(text)
     fi
 }
 
+refuse_over_package() {
+    # The RPM owns the same paths; writing over them would break dnf's view.
+    if command -v rpm >/dev/null && rpm -q fancontrol-linux >/dev/null 2>&1; then
+        red "fancontrol-linux is installed as a package; update it with:"
+        red "    sudo dnf upgrade --refresh fancontrol-linux"
+        exit 1
+    fi
+}
+
 install_all() {
+    refuse_over_package
     require_systemd
     check_dependencies
 
@@ -320,7 +330,7 @@ case "${1:-}" in
     --program-only)
         # Dependencies and the program itself, without the service, the bus
         # policy or the menu entry: for containers, CI and packagers.
-        require_root "$@"; check_dependencies; install_program
+        require_root "$@"; refuse_over_package; check_dependencies; install_program
         green "Program installed in $VENV_DIR" ;;
     -h|--help)   sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
     *)           require_root "$@"; install_all "${1:-}" ;;
