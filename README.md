@@ -180,7 +180,8 @@ at, an empty fan header. Hiding only tidies the window: a hidden curve still
 drives its fans. **Show hidden** in a section's header brings them back.
 
 The window speaks English, or Ukrainian on a Ukrainian desktop. To choose
-yourself: `fancontrol-gui --lang uk` or `FANCONTROL_LANG=en`. Adding a
+yourself, pick a language in **Settings** (kept per user), or start it with
+`fancontrol-gui --lang uk` or `FANCONTROL_LANG=en`. Adding a
 language is one file in `fancontrol/gui/locales/`; `tests/test_i18n.py`
 tells you which strings are still missing.
 

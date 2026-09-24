@@ -11,8 +11,10 @@ as the curve descriptions - is marked with :func:`N_` and passed through
 call and fails when a string has no translation, or when a translation drops
 or renames a ``{placeholder}``.
 
-The language comes from ``FANCONTROL_LANG`` if set, otherwise from the system
-locale, so a Ukrainian desktop gets Ukrainian and everything else English.
+The language comes from ``--lang``, then ``FANCONTROL_LANG``, then the choice
+made in the settings dialog (kept per user, in ``~/.config``), and otherwise
+from the system locale: a Ukrainian desktop gets Ukrainian, anything else
+English.
 """
 
 from __future__ import annotations
@@ -25,6 +27,12 @@ log = logging.getLogger(__name__)
 
 #: Languages with a catalog, besides English.
 AVAILABLE = ("uk",)
+
+#: Each language in its own words, for the language chooser.
+LANGUAGE_NAMES = {"en": "English", "uk": "Українська"}
+
+#: Where the chosen language is kept: QSettings organisation and application.
+SETTINGS_SCOPE = ("fancontrol-linux", "gui")
 
 _catalog: dict[str, str] = {}
 _language = "en"
@@ -46,10 +54,37 @@ def language() -> str:
     return _language
 
 
-def choose_language(requested: str | None = None) -> str:
-    """Pick a language code from an explicit request or the environment."""
+def saved_language() -> str:
+    """The language chosen in the settings dialog, or "" for the system's."""
 
-    candidates = [requested, os.environ.get("FANCONTROL_LANG")]
+    try:
+        from PySide6.QtCore import QSettings
+    except ImportError:
+        return ""
+    value = QSettings(*SETTINGS_SCOPE).value("language", "")
+    return value if isinstance(value, str) else ""
+
+
+def save_language(code: str) -> None:
+    """Remember ``code`` for the next start; "" goes back to the system's."""
+
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings(*SETTINGS_SCOPE)
+    if code:
+        settings.setValue("language", code)
+    else:
+        settings.remove("language")
+    settings.sync()
+
+
+def choose_language(requested: str | None = None, saved: str | None = None) -> str:
+    """Pick a language code: the request, the environment, the saved choice,
+    the system locale - the first one we have a catalog for."""
+
+    if saved is None and not requested and not os.environ.get("FANCONTROL_LANG"):
+        saved = saved_language()
+    candidates = [requested, os.environ.get("FANCONTROL_LANG"), saved]
     if not any(candidates):
         try:
             from PySide6.QtCore import QLocale

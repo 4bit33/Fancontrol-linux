@@ -10,13 +10,15 @@ Four sections, each a grid that wraps to the window's width:
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Slot
+from PySide6.QtCore import QProcess, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -38,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from ..core.models import Config, validate
 from .client import BaseProxy, ProxyError
+from . import i18n
 from .i18n import tr
 from .widgets.cards import CURVE_CARD_WIDTH, AddCard, CurveCard, Section, SensorCard
 from .widgets.control_card import ControlCard
@@ -90,16 +93,31 @@ class SettingsDialog(QDialog):
         self.restore = QCheckBox(tr("Hand the fans back to the firmware when the daemon stops"))
         self.restore.setChecked(config.settings.restore_on_exit)
 
+        self.language = QComboBox()
+        self.language.addItem(tr("As the system"), "")
+        for code, name in i18n.LANGUAGE_NAMES.items():
+            self.language.addItem(name, code)
+        self._saved_language = i18n.saved_language()
+        self.language.setCurrentIndex(max(0, self.language.findData(self._saved_language)))
+        self.language.setToolTip(tr("Kept for your user only. The window restarts to switch."))
+
         form.addRow(tr("Update every"), self.interval)
         form.addRow(tr("Force full speed above"), self.critical)
         form.addRow(tr("Speed when a sensor fails"), self.failsafe)
         form.addRow("", self.restore)
+        form.addRow(tr("Language"), self.language)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def chosen_language(self) -> str | None:
+        """The newly chosen language ("" for the system's), or None if unchanged."""
+
+        code = self.language.currentData()
+        return None if code == self._saved_language else code
 
     def apply_to(self, config: Config) -> None:
         config.settings.update_interval = self.interval.value()
@@ -648,9 +666,42 @@ class MainWindow(QMainWindow):
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self.config, self)
-        if dialog.exec() == QDialog.Accepted:
-            dialog.apply_to(self.config)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        dialog.apply_to(self.config)
+        self._push_config()
+
+        language = dialog.chosen_language()
+        if language is None:
+            return
+        i18n.save_language(language)
+        if QMessageBox.question(
+            self, tr("Language"),
+            tr("The new language is used from the next start. Restart the window now?"),
+        ) == QMessageBox.Yes:
+            self._restart()
+
+    def _restart(self) -> None:
+        """Start a fresh copy of the window and close this one."""
+
+        if self._push_timer.isActive():
+            self._push_timer.stop()
             self._push_config()
+        # Drop --lang, or the restart would keep the language just replaced.
+        args, skip = [], False
+        for arg in sys.argv[1:]:
+            if skip:
+                skip = False
+            elif arg == "--lang":
+                skip = True
+            elif not arg.startswith("--lang="):
+                args.append(arg)
+        # PySide returns (started, pid); the tuple alone is always true.
+        started, _pid = QProcess.startDetached(sys.executable, [sys.argv[0], *args])
+        if started:
+            QApplication.quit()
+        else:
+            QMessageBox.information(self, tr("Language"), tr("Close and reopen the window to switch."))
 
     # ------------------------------------------------------------------
     # actions

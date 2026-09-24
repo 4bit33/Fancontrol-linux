@@ -331,3 +331,30 @@ def test_a_hidden_fan_can_be_brought_back(qapp, window):
     # With nothing left hidden the switch turns itself off.
     assert not window.controls_section.show_hidden.isChecked()
     assert control.id in window.cards
+
+
+def test_the_settings_offer_every_language(qapp, monkeypatch):
+    from fancontrol.gui import i18n
+    from fancontrol.gui.main_window import SettingsDialog
+
+    monkeypatch.setattr(i18n, "saved_language", lambda: "")
+    dialog = SettingsDialog(Config())
+    codes = [dialog.language.itemData(i) for i in range(dialog.language.count())]
+    assert codes == ["", *i18n.LANGUAGE_NAMES]
+    assert dialog.chosen_language() is None
+    dialog.language.setCurrentIndex(codes.index("uk"))
+    assert dialog.chosen_language() == "uk"
+
+
+def test_restarting_drops_the_old_language_argument(window, monkeypatch):
+    import sys as _sys
+
+    launched = []
+    monkeypatch.setattr(_sys, "argv", ["/usr/bin/fancontrol-gui", "--lang", "en", "--session"])
+    monkeypatch.setattr(
+        "fancontrol.gui.main_window.QProcess.startDetached",
+        lambda program, args: launched.append(args) or (True, 1),
+    )
+    monkeypatch.setattr("fancontrol.gui.main_window.QApplication.quit", lambda: None)
+    window._restart()
+    assert launched == [["/usr/bin/fancontrol-gui", "--session"]]

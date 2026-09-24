@@ -120,3 +120,13 @@ def test_tr_falls_back_to_english_and_fills_placeholders():
     finally:
         i18n.set_language("en")
     assert i18n.tr("Controls") == "Controls"
+
+
+def test_a_saved_choice_beats_the_system_but_not_the_environment(monkeypatch):
+    monkeypatch.delenv("FANCONTROL_LANG", raising=False)
+    monkeypatch.setenv("LC_ALL", "de_DE.UTF-8")
+    assert i18n.choose_language(saved="uk") == "uk"
+    assert i18n.choose_language(saved="en") == "en"
+    monkeypatch.setenv("FANCONTROL_LANG", "en")
+    assert i18n.choose_language(saved="uk") == "en"
+    assert i18n.choose_language(requested="uk", saved="en") == "uk"

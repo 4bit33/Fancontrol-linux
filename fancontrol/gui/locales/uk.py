@@ -55,6 +55,13 @@ CATALOG: dict[str, str] = {
     "Update every": "Оновлювати кожні",
     "Force full speed above": "Повна швидкість вище",
     "Speed when a sensor fails": "Швидкість, якщо датчик збоїть",
+    "Language": "Мова",
+    "As the system": "Як у системі",
+    "Kept for your user only. The window restarts to switch.":
+        "Зберігається лише для вашого користувача. Для зміни вікно перезапуститься.",
+    "The new language is used from the next start. Restart the window now?":
+        "Нова мова діятиме з наступного запуску. Перезапустити вікно зараз?",
+    "Close and reopen the window to switch.": "Закрийте й знову відкрийте вікно, щоб змінити мову.",
 
     # -- calibration ----------------------------------------------------
     "Calibrate": "Калібрувати",

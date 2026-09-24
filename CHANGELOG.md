@@ -8,8 +8,8 @@
   card with a small graph, the temperature it reads and the speed it outputs,
   and the fans it drives; sensors are tiles coloured by temperature.
 * The window is translated: English, and Ukrainian on a Ukrainian desktop,
-  including Qt's own buttons and dialogs. `--lang` or `FANCONTROL_LANG`
-  choose explicitly.
+  including Qt's own buttons and dialogs. The language can be chosen in
+  Settings, per user, or with `--lang` or `FANCONTROL_LANG`.
 * Any card — fan, curve or sensor — can be hidden from its right-click menu,
   and brought back with "Show hidden" in the section header. Hiding changes
   only the window, never what the fans do.
