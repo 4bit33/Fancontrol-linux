@@ -4,7 +4,7 @@
 # so the spec's Source0 and %autosetup work for both.
 
 top     := $(shell cd "$(dir $(lastword $(MAKEFILE_LIST)))/.." && pwd)
-version := $(shell sed -n 's/^Version: *//p' $(top)/fancontrol-linux.spec)
+version := $(shell sed -n 's/^Version: *//p' $(top)/packaging/fedora/fancontrol-linux.spec)
 outdir  ?= $(top)/build/srpm
 
 srpm:
@@ -15,6 +15,6 @@ srpm:
 	git -C $(top) archive --prefix=Fancontrol-linux-$(version)/ \
 	    -o $(outdir)/fancontrol-linux-$(version).tar.gz HEAD
 	rpmbuild -bs --define "_sourcedir $(outdir)" --define "_srcrpmdir $(outdir)" \
-	    $(top)/fancontrol-linux.spec
+	    $(top)/packaging/fedora/fancontrol-linux.spec
 
 .PHONY: srpm

@@ -3,10 +3,10 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-pkg/
-src/
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.tar.gz
 *.pkg.tar.*
-*.src.tar.gz
 .pytest_cache/
 .venv/
 venv/

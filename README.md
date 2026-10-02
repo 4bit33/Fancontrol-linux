@@ -60,9 +60,10 @@ Plainly, so you know what to expect.
 
 | | |
 |---|---|
-| CPU | Ryzen7-4700U |
-| Graphics | Radeon-Graphics |
-| System | Arch Linux, KDE Plasma (Wayland) |
+| Motherboard | Gigabyte B760 Gaming X AX DDR4, ITE IT8689E, out-of-tree `it87` driver |
+| CPU | Intel (`coretemp`) |
+| Graphics | NVIDIA GeForce RTX 3070, driver 610 |
+| System | Fedora 44, KDE Plasma (Wayland), SELinux enforcing |
 
 Everything works there: four motherboard fans, both graphics card fans,
 calibration, importing a real Windows configuration, and a full install with
@@ -70,15 +71,15 @@ the service.
 
 **Tested automatically, without real hardware:**
 
-* 171 tests on every push, on Ubuntu and Arch — curves, the importer, the
+* over 400 tests on every push, on Ubuntu, Fedora and Arch — curves, the importer, the
   control loop against simulated hardware, D-Bus, the daemon's lifecycle, the
   window;
-* installing the program (without the service) in clean Arch,
-  Ubuntu 24.04, Debian trixie, Fedora 44 and openSUSE Tumbleweed containers.
+* installing the program (without the service) in clean Fedora 44,
+  Ubuntu 24.04, Debian trixie, Arch and openSUSE Tumbleweed containers.
 
 **Not yet tested live:** Nuvoton chips (`nct6775`), AMD CPUs and graphics
 cards, other NVIDIA cards, a full install with the service on anything other
-than Arch. The code for them is the same and should work — but "should" is
+than Fedora. The code for them is the same and should work — but "should" is
 not "does".
 
 **Not supported:** USB-connected AIO pumps and fan hubs (Corsair, NZXT and
@@ -101,23 +102,37 @@ The issue template asks for the rest.
 
 ## Installing
 
-### Arch Linux: from the AUR
+### Fedora: from COPR
 
 ```bash
-yay -S fancontrol-linux
-# on machines with an NVIDIA GPU, as well:
-yay -S fancontrol-linux-nvidia
+sudo dnf copr enable 4bit33/fancontrol-linux
+sudo dnf install fancontrol-linux
 sudo systemctl enable --now fancontrold
 ```
 
-Updates then come with the rest of the system (`yay -Syu`), and the daemon
-restarts on its own. `fancontrol-linux-nvidia` is a one-line sandbox drop-in
-for machines with an NVIDIA GPU — it gives the daemon the permissions the
-driver needs to set GPU fan speeds.
+Updates then come with the rest of the system (`dnf upgrade`, or Discover),
+and the daemon restarts on its own. With the NVIDIA driver installed,
+`fancontrol-linux-nvidia` comes along automatically — it gives the daemon the
+permissions the driver needs to set GPU fan speeds.
 
 Switching from `install.sh` to the package: `sudo ./install.sh --uninstall`
 first (your configuration in `/etc/fancontrol-linux` stays), then the commands
 above.
+
+### Arch Linux: from the AUR
+
+```bash
+yay -S fancontrol-linux
+yay -S fancontrol-linux-nvidia      # as well, on a machine with an NVIDIA GPU
+sudo systemctl enable --now fancontrold
+```
+
+Any AUR helper works; `yay` is only the most common. Updates come with
+`yay -Syu`, and the daemon restarts on its own. Unlike on Fedora,
+`fancontrol-linux-nvidia` is not pulled in automatically — install it if
+you have an NVIDIA card; it gives the daemon the permissions the driver needs
+to set GPU fan speeds. The AUR package is maintained by
+[W1zago](https://github.com/W1zago).
 
 ### Any distribution: install.sh
 
@@ -127,15 +142,15 @@ cd Fancontrol-linux
 sudo ./install.sh
 ```
 
-The script knows `pacman` (Arch), `dnf` (Fedora), `apt` (Debian, Ubuntu) and
+The script knows `dnf` (Fedora), `apt` (Debian, Ubuntu), `pacman` (Arch) and
 `zypper` (openSUSE). It installs what the distribution packages, and fetches
 PySide6 and dasbus from PyPI into the program's own environment where the
 distribution has none — the system Python is left alone. Then the systemd
 unit, the D-Bus policy and the menu entry, and the daemon is started.
 
 systemd is required. Fan settings can be changed by the administrators'
-group — `wheel` on Arch (the installer uses whichever of `wheel`/`sudo`/`admin`
-the machine has). Anyone can read the status.
+group — `wheel` (Fedora, Arch, openSUSE) or `sudo` (Debian, Ubuntu); the
+installer uses whichever the machine has. Anyone can read the status.
 
 ```bash
 sudo ./install.sh --uninstall        # remove it (the configuration stays in /etc)
@@ -144,7 +159,8 @@ sudo ./install.sh --uninstall        # remove it (the configuration stays in /et
 ### Updating
 
 ```bash
-yay -Syu fancontrol-linux                                  # from the AUR
+sudo dnf upgrade --refresh fancontrol-linux             # from COPR
+yay -Syu                                                # from the AUR
 cd Fancontrol-linux && git pull && sudo ./install.sh    # with install.sh
 ```
 
@@ -318,14 +334,10 @@ For the in-kernel driver, it is the kernel parameter
 `acpi_enforce_resources=lax`:
 
 ```bash
-Add it to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`, then:
-
-```bash
-sudo grub-mkconfig -o /boot/grub/grub.cfg
-```
-
-(On Arch with systemd-boot instead of GRUB, add it to the `options` line in
-your loader entry under `/boot/loader/entries/`.)
+sudo grubby --update-kernel=ALL --args="acpi_enforce_resources=lax"   # Fedora, RHEL
+# Debian, Ubuntu, Arch: add it to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub,
+# then  sudo update-grub  (Debian, Ubuntu)
+# or    sudo grub-mkconfig -o /boot/grub/grub.cfg  (Arch)
 ```
 
 Both lift the kernel's protection against ACPI and the driver using the same
@@ -373,14 +385,18 @@ the way:
 sudo ./tools/nvidia-diagnose.sh
 ```
 
-The thing the installer already handles, but which is worth knowing:
+Two things the installer already handles, but which are worth knowing:
 
 * **Capabilities.** The unit deliberately gives the daemon no capabilities —
   writing to PWM needs none. The NVIDIA driver does: without them
   `nvmlDeviceSetFanSpeed_v2` answers "no permission". On machines with an
   NVIDIA card the installer adds a one-line drop-in that restores them; the
   rest of the sandbox stays.
-`fanctl doctor` shows the state.
+* **SELinux.** systemd picks a service's domain from the label of the file it
+  runs. The venv's script is `lib_t`, which would leave the daemon in
+  `init_t`, from where the policy keeps it away from `/dev/nvidia*`. So the
+  unit runs the interpreter (`bin_t`) and the daemon lands in the ordinary
+  `unconfined_service_t`. `fanctl doctor` shows the domain.
 
 **Coolbits is not needed.** The advice to set `Option "Coolbits" "4"` in
 `xorg.conf` is about `nvidia-settings` and the X server's NV-CONTROL
@@ -448,15 +464,15 @@ The tests cover the curves, the importer against a **real** version 270
 end-to-end "the machine actually cools down"), the D-Bus interface's
 signatures, the daemon's whole lifecycle on a real bus (start, SIGTERM,
 SIGKILL, handing control back to the firmware), and the window under Qt's
-offscreen platform. GitHub Actions runs them on Ubuntu and Arch for every
+offscreen platform. GitHub Actions runs them on Ubuntu and Fedora for every
 push.
 
 The installer is checked on different distributions in clean containers
 (podman, or `ENGINE=docker`):
 
 ```bash
-./tools/test-install-in-containers.sh           # Arch, Ubuntu, Debian, Fedora, openSUSE
-./tools/test-install-in-containers.sh arch      # just one
+./tools/test-install-in-containers.sh           # Fedora, Ubuntu, Debian, Arch, openSUSE
+./tools/test-install-in-containers.sh ubuntu    # just one
 ```
 
 Containers have no systemd, so this covers the half of the installer that

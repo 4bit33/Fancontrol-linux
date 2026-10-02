@@ -4,11 +4,12 @@
 
 ### Installing
 
-* An Arch package: `PKGBUILD` (with `.SRCINFO`) building `fancontrol-linux`
-  and a `fancontrol-linux-nvidia` split package with the sandbox drop-in for
-  NVIDIA GPUs — `yay -S fancontrol-linux`. The update notice gives the `yay`
-  command when the program came from the AUR, `install.sh` refuses to write
-  over the AUR package, and CI runs the tests in an Arch container.
+* An Arch Linux package in the AUR, maintained by W1zago: `yay -S
+  fancontrol-linux`, plus `fancontrol-linux-nvidia` on machines with an
+  NVIDIA card. Upgrades restart the daemon, the update notice gives the AUR
+  command, and `install.sh` refuses to write over the package. CI runs the
+  tests on Arch as well as Ubuntu and Fedora.
+* Packaging lives in `packaging/fedora/` and `packaging/arch/`.
 
 ### Window
 

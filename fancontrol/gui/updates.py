@@ -63,8 +63,8 @@ def source_dir() -> Path | None:
 
 def installed_by() -> str | None:
     """Which package the program came from: ``"rpm"``, ``"aur"``, or None for
-    install.sh. The packager writes the marker; see fancontrol-linux.spec and
-    PKGBUILD."""
+    install.sh. The packager writes the marker; see
+    packaging/fedora/fancontrol-linux.spec and packaging/arch/PKGBUILD."""
 
     try:
         text = (Path(sys.prefix) / "share" / "fancontrol-linux" / "installed-by").read_text()

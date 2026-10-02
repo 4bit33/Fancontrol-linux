@@ -1,14 +1,26 @@
-# Maintainer: 4bit33 <luisadgg5@gmail.com>
-# An AUR package for fancontrol-linux. To publish a release (needs an AUR
+# Maintainer: W1zago <jura.dukui@gmail.com>
+# Contributor: 4bit33 <luisadgg5@gmail.com>
+#
+# The AUR package for fancontrol-linux. To publish a release (needs an AUR
 # account with an SSH key, see https://wiki.archlinux.org/title/AUR):
 #
 #   tools/aur-publish.sh v1.2.0
 #
-# which copies this file together with a fresh .SRCINFO into your AUR clone.
-# To install from a checkout instead: makepkg -si
+# which copies this file with the release's checksum and a fresh .SRCINFO
+# into the AUR repository. pkgver follows the program's version; bump it
+# together with pyproject.toml and the Fedora spec.
+#
+# To build and install the checkout you have, without a release:
+#
+#   ver=$(sed -n 's/^pkgver=//p' packaging/arch/PKGBUILD)
+#   git archive --prefix=Fancontrol-linux-$ver/ \
+#       -o packaging/arch/fancontrol-linux-$ver.tar.gz HEAD
+#   cd packaging/arch && makepkg -si
+#
+# makepkg uses the archive that is already there instead of downloading one.
 pkgbase=fancontrol-linux
 pkgname=('fancontrol-linux' 'fancontrol-linux-nvidia')
-pkgver=1.2.0
+pkgver=1.1.1
 pkgrel=1
 pkgdesc="Fan control for Linux, in the shape of FanControl for Windows"
 arch=('any')
@@ -34,7 +46,8 @@ check() {
 package_fancontrol-linux() {
     pkgdesc="Fan control for Linux, in the shape of FanControl for Windows"
     depends=('python' 'python-gobject' 'python-dasbus' 'pyside6' 'systemd')
-    optdepends=('lm_sensors: detect motherboard sensors and load super-I/O drivers')
+    optdepends=('lm_sensors: detect motherboard sensors and load super-I/O drivers'
+                'fancontrol-linux-nvidia: drive the fans of an NVIDIA graphics card')
     cd "Fancontrol-linux-$pkgver"
 
     python -m installer --destdir="$pkgdir" dist/*.whl
@@ -61,7 +74,7 @@ EOF
         "$pkgdir/usr/share/applications/io.github.fancontrol_linux.gui.desktop"
 
     # Restarting on upgrade is what makes an update take effect.
-    install -Dm644 data/pacman/fancontrold-restart.hook \
+    install -Dm644 packaging/arch/fancontrold-restart.hook \
         "$pkgdir/usr/share/libalpm/hooks/fancontrold-restart.hook"
 
     # Tells the window's update notice to point at the AUR rather than git.

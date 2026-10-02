@@ -6,9 +6,10 @@
 #
 # Needs an AUR account with your SSH key uploaded
 # (https://wiki.archlinux.org/title/AUR#Authenticate).
-# Clones (or reuses) the AUR repo in a scratch directory, fills in the tag's
-# checksum, and pushes. Push the tag to GitHub first, and bump pkgver in
-# PKGBUILD to the tag beforehand.
+# Clones the AUR repo in a scratch directory, fills in the release's
+# checksum, regenerates .SRCINFO (needs makepkg, so run it on Arch), and
+# pushes. Push the tag to GitHub first; pkgver in packaging/arch/PKGBUILD must
+# already match it.
 set -euo pipefail
 
 tag="${1:?usage: $0 <tag, e.g. v1.2.0>}"
@@ -22,8 +23,9 @@ git ls-remote --exit-code --tags "$repo" "refs/tags/$tag" >/dev/null \
 
 top="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if ! grep -q "^pkgver=$ver$" "$top/PKGBUILD"; then
-    echo "PKGBUILD still says $(grep '^pkgver=' "$top/PKGBUILD") - bump it to $ver first" >&2
+pkgbuild="$top/packaging/arch/PKGBUILD"
+if ! grep -q "^pkgver=$ver$" "$pkgbuild"; then
+    echo "PKGBUILD still says $(grep '^pkgver=' "$pkgbuild") - bump it to $ver first" >&2
     exit 1
 fi
 
@@ -31,11 +33,11 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 git clone "ssh://aur@$aur_host/$pkg.git" "$work/$pkg"
-cp "$top/PKGBUILD" "$work/$pkg/"
+cp "$pkgbuild" "$work/$pkg/"
 
-# Name the release tarball exactly as the tag, and checksum it.
+# Checksum the very URL the PKGBUILD's source= downloads.
 tarball="$work/$pkg-$ver.tar.gz"
-curl -sL -o "$tarball" "https://github.com/4bit33/Fancontrol-linux/archive/refs/tags/$tag.tar.gz"
+curl -fsSL -o "$tarball" "https://github.com/4bit33/Fancontrol-linux/archive/v$ver/$pkg-$ver.tar.gz"
 sum="$(sha256sum "$tarball" | cut -d' ' -f1)"
 rm "$tarball"
 sed -i "s/^sha256sums=.*/sha256sums=('$sum')/" "$work/$pkg/PKGBUILD"
