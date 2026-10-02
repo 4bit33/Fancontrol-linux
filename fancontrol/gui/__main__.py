@@ -12,62 +12,10 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .. import __version__
-from . import i18n
+from . import i18n, theme
 from .i18n import tr
 
 log = logging.getLogger("fancontrol-gui")
-
-STYLE = """
-QFrame#controlCard, QFrame#card {
-    border: 1px solid palette(mid);
-    border-radius: 10px;
-    background: palette(base);
-}
-QFrame#card:hover {
-    border-color: palette(highlight);
-}
-QFrame#addCard {
-    border: 2px dashed palette(mid);
-    border-radius: 10px;
-    background: transparent;
-}
-QFrame#addCard:hover {
-    border-color: palette(highlight);
-}
-QFrame#banner {
-    background: palette(highlight);
-    color: palette(highlighted-text);
-}
-QFrame#banner QLabel {
-    color: palette(highlighted-text);
-}
-QToolButton#segment {
-    border: 1px solid palette(mid);
-    border-radius: 4px;
-    padding: 2px 10px;
-    background: palette(button);
-}
-QToolButton#segment:checked {
-    background: palette(highlight);
-    color: palette(highlighted-text);
-    border-color: palette(highlight);
-}
-QLabel#chip {
-    border-radius: 8px;
-    padding: 1px 8px;
-    background: palette(alternate-base);
-    color: palette(text);
-}
-QProgressBar {
-    border: none;
-    border-radius: 3px;
-    background: palette(alternate-base);
-}
-QProgressBar::chunk {
-    border-radius: 3px;
-    background: palette(highlight);
-}
-"""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lang", default=None,
                         help="language of the window, such as en or uk "
                              "(default: the system's; also FANCONTROL_LANG)")
+    parser.add_argument("--theme", default=None, choices=("system", "dark", "light"),
+                        help="theme of the window "
+                             "(default: the choice in Settings; also FANCONTROL_THEME)")
     parser.add_argument("-c", "--config", type=Path, default=None,
                         help="configuration file, with --local")
     return parser
@@ -109,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationDisplayName(tr("Fan Control"))
     app.setDesktopFileName("io.github.fancontrol_linux.gui")
     app.setWindowIcon(QIcon.fromTheme("sensors-fan", QIcon.fromTheme("computer")))
-    app.setStyleSheet(STYLE)
+    theme.install(app, args.theme)
 
     from .client import DBusProxy, LocalProxy, ProxyError
 

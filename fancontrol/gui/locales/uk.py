@@ -77,6 +77,19 @@ CATALOG: dict[str, str] = {
     "As the system": "Як у системі",
     "Kept for your user only. The window restarts to switch.":
         "Зберігається лише для вашого користувача. Для зміни вікно перезапуститься.",
+    "Theme": "Тема",
+    "Dark": "Темна",
+    "Light": "Світла",
+    "The theme applies right away and is kept for your user only.":
+        "Тема застосовується одразу й зберігається лише для вашого користувача.",
+    "Background image": "Фонове зображення",
+    "Choose…": "Вибрати…",
+    "Clear": "Очистити",
+    "No image": "Без зображення",
+    "Open a background image": "Відкрити фонове зображення",
+    "Image files ({list});;All files (*)": "Файли зображень ({list});;Усі файли (*)",
+    "This file could not be read as an image.":
+        "Цей файл не вдалося прочитати як зображення.",
     "The new language is used from the next start. Restart the window now?":
         "Нова мова діятиме з наступного запуску. Перезапустити вікно зараз?",
     "Close and reopen the window to switch.": "Закрийте й знову відкрийте вікно, щоб змінити мову.",

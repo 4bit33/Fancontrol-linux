@@ -2,6 +2,13 @@
 
 ## Unreleased (1.2.0)
 
+### Window
+
+* Theme chooser in Settings: the system's, dark or light, plus an optional
+  background picture stretched behind the cards. Applies right away, kept per
+  user; `fancontrol-gui --theme dark` (or `FANCONTROL_THEME`) overrides it for
+  one start.
+
 ### Installing
 
 * An Arch package: `PKGBUILD` (with `.SRCINFO`) building `fancontrol-linux`

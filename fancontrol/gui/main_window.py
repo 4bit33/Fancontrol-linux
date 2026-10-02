@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Slot
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..core.models import Config, validate
 from .client import BaseProxy, ProxyError
-from . import i18n, updates
+from . import i18n, theme, updates
 from .i18n import tr
 from .widgets.cards import CURVE_CARD_WIDTH, AddCard, CurveCard, Section, SensorCard
 from .widgets.control_card import ControlCard
@@ -113,18 +113,89 @@ class SettingsDialog(QDialog):
         ))
         self.check_updates.setChecked(updates.checking_enabled())
 
+        self.theme_name = QComboBox()
+        self.theme_name.addItem(tr("As the system"), "system")
+        self.theme_name.addItem(tr("Dark"), "dark")
+        self.theme_name.addItem(tr("Light"), "light")
+        self._initial_theme = theme.effective()
+        self.theme_name.setCurrentIndex(
+            max(0, self.theme_name.findData(self._initial_theme[0])))
+        self.theme_name.setToolTip(tr(
+            "The theme applies right away and is kept for your user only."))
+        self.theme_name.currentIndexChanged.connect(self._preview_theme)
+
+        self._background = self._initial_theme[1]
+        self.bg_label = QLabel()
+        bg_row = QHBoxLayout()
+        bg_row.setContentsMargins(0, 0, 0, 0)
+        bg_row.addWidget(self.bg_label, 1)
+        self.bg_choose = QPushButton(tr("Choose…"))
+        self.bg_choose.clicked.connect(self._choose_background)
+        bg_row.addWidget(self.bg_choose)
+        self.bg_clear = QPushButton(tr("Clear"))
+        self.bg_clear.clicked.connect(self._clear_background)
+        bg_row.addWidget(self.bg_clear)
+        bg_box = QWidget()
+        bg_box.setLayout(bg_row)
+        self._refresh_bg_label()
+
         form.addRow(tr("Update every"), self.interval)
         form.addRow(tr("Force full speed above"), self.critical)
         form.addRow(tr("Speed when a sensor fails"), self.failsafe)
         form.addRow("", self.restore)
         form.addRow(tr("Language"), self.language)
         form.addRow("", self.check_updates)
+        form.addRow(tr("Theme"), self.theme_name)
+        form.addRow(tr("Background image"), bg_box)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def initial_theme(self) -> tuple[str, str]:
+        """The (theme, background) the dialog opened with, for reverting."""
+
+        return self._initial_theme
+
+    def _preview_theme(self) -> None:
+        """Apply the chosen theme at once and remember it."""
+
+        name = self.theme_name.currentData()
+        theme.apply(QApplication.instance(), name, self._background)
+        theme.save_theme(name)
+
+    def _refresh_bg_label(self) -> None:
+        if self._background:
+            self.bg_label.setText(Path(self._background).name)
+            self.bg_label.setToolTip(self._background)
+        else:
+            self.bg_label.setText(tr("No image"))
+            self.bg_label.setToolTip("")
+
+    def _choose_background(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(
+            self, tr("Open a background image"), "",
+            tr("Image files ({list});;All files (*)", list=theme.IMAGE_PATTERNS))
+        if not path:
+            return
+        if QPixmap(path).isNull():
+            QMessageBox.warning(
+                self, tr("Background image"),
+                tr("This file could not be read as an image."))
+            return
+        self._background = path
+        self._refresh_bg_label()
+        theme.apply(QApplication.instance(), self.theme_name.currentData(),
+                    self._background)
+        theme.save_background(path)
+
+    def _clear_background(self) -> None:
+        self._background = ""
+        self._refresh_bg_label()
+        theme.apply(QApplication.instance(), self.theme_name.currentData(), "")
+        theme.save_background("")
 
     def chosen_language(self) -> str | None:
         """The newly chosen language ("" for the system's), or None if unchanged."""
@@ -180,6 +251,7 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("central")
         column = QVBoxLayout(central)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
@@ -751,6 +823,12 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self.config, self)
         if dialog.exec() != QDialog.Accepted:
+            # The theme previews live, so put back what was there - the look
+            # and the saved choice alike.
+            name, background = dialog.initial_theme()
+            theme.save_theme(name)
+            theme.save_background(background)
+            theme.apply(QApplication.instance(), name, background)
             return
         dialog.apply_to(self.config)
         self._push_config()
