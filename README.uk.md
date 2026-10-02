@@ -62,7 +62,7 @@
 | Плата | Gigabyte B760 Gaming X AX DDR4, чип ITE IT8689E, позаядерний драйвер `it87` |
 | Процесор | Intel (`coretemp`) |
 | Відеокарта | NVIDIA GeForce RTX 3070, драйвер 610 |
-| Система | Fedora 44, KDE Plasma (Wayland), SELinux enforcing |
+| Система | Arch Linux, KDE Plasma (Wayland) |
 
 Там працює все: чотири вентилятори плати, обидва вентилятори відеокарти,
 калібрування, імпорт справжнього Windows-конфігу, повне встановлення зі
@@ -70,14 +70,14 @@
 
 **Перевірено автоматично, без справжнього заліза:**
 
-* 171 тест на кожен пуш, на Ubuntu і Fedora — криві, імпорт, рушій на
+* 171 тест на кожен пуш, на Ubuntu і Arch — криві, імпорт, рушій на
   симуляторі заліза, D-Bus, життєвий цикл демона, вікно;
-* встановлення програми (без служби) у чистих контейнерах Fedora 44,
-  Ubuntu 24.04, Debian trixie, Arch і openSUSE Tumbleweed.
+* встановлення програми (без служби) у чистих контейнерах Arch,
+  Ubuntu 24.04, Debian trixie, Fedora 44 і openSUSE Tumbleweed.
 
 **Не перевірено наживо:** чипи Nuvoton (`nct6775`), процесори й відеокарти AMD,
 інші відеокарти NVIDIA, повне встановлення зі службою на дистрибутивах, крім
-Fedora. Код для них той самий і має працювати — але «має» ще не «працює».
+Arch. Код для них той самий і має працювати — але «має» ще не «працює».
 
 **Не підтримується:** AIO-помпи й контролери з USB (Corsair, NZXT тощо —
 `liquidctl`), дистрибутиви без systemd.
@@ -99,17 +99,16 @@ sudo ./tools/pwm-check.sh
 
 ## Встановлення
 
-### Fedora: з COPR
+### Arch Linux: з AUR
 
 ```bash
-sudo dnf copr enable 4bit33/fancontrol-linux
-sudo dnf install fancontrol-linux
+yay -S fancontrol-linux
 sudo systemctl enable --now fancontrold
 ```
 
-Далі оновлення приходять разом з рештою системи (`dnf upgrade` або Discover),
-а служба перезапускається сама. Якщо стоїть драйвер NVIDIA, разом із програмою
-автоматично встановиться `fancontrol-linux-nvidia` — він дає службі права, без
+Далі оновлення приходять разом з рештою системи (`yay -Syu`), а служба
+перезапускається сама. Якщо стоїть драйвер NVIDIA, разом із програмою
+автоматично ставиться drop-in для sandbox — він дає службі права, без
 яких драйвер не дозволяє керувати вентиляторами відеокарти.
 
 Перехід з `install.sh` на пакет: спершу `sudo ./install.sh --uninstall`
@@ -123,14 +122,14 @@ cd Fancontrol-linux
 sudo ./install.sh
 ```
 
-Скрипт знає `dnf` (Fedora), `apt` (Debian, Ubuntu), `pacman` (Arch) і
+Скрипт знає `pacman` (Arch), `dnf` (Fedora), `apt` (Debian, Ubuntu) і
 `zypper` (openSUSE). Він поставить із репозиторіїв дистрибутива те, що там є,
 а PySide6 і dasbus, яких у деяких дистрибутивах немає, докачає з PyPI у власне
 оточення програми — системний Python не зачіпається. Далі — `systemd`-юніт,
 політика D-Bus, пункт у меню, і демон увімкнеться.
 
 Потрібен systemd. Змінювати налаштування вентиляторів можуть члени групи
-адміністраторів — `wheel` (Fedora, Arch, openSUSE) або `sudo` (Debian, Ubuntu);
+адміністраторів — `wheel` на Arch (інсталятор сам бере ту з `wheel`/`sudo`/`admin`,
 інсталятор сам бере ту, що є на машині. Дивитись статус може будь-хто.
 
 ```bash
@@ -140,7 +139,7 @@ sudo ./install.sh --uninstall        # прибрати (конфіг лишит
 ### Оновлення
 
 ```bash
-sudo dnf upgrade --refresh fancontrol-linux             # з COPR
+yay -Syu fancontrol-linux                                   # з AUR
 cd Fancontrol-linux && git pull && sudo ./install.sh    # через install.sh
 ```
 
@@ -312,10 +311,14 @@ echo "options it87 ignore_resource_conflict=1" | sudo tee /etc/modprobe.d/it87.c
 Для ядрового драйвера — параметр ядра `acpi_enforce_resources=lax`:
 
 ```bash
-sudo grubby --update-kernel=ALL --args="acpi_enforce_resources=lax"   # Fedora, RHEL
-# Debian, Ubuntu, Arch: дописати в GRUB_CMDLINE_LINUX_DEFAULT у /etc/default/grub,
-# потім  sudo update-grub  (Debian, Ubuntu)
-# або    sudo grub-mkconfig -o /boot/grub/grub.cfg  (Arch)
+дописати в GRUB_CMDLINE_LINUX_DEFAULT у /etc/default/grub, потім:
+
+```bash
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+```
+
+(На Arch із systemd-boot замість GRUB — дописати в рядок `options` у вашому
+файлі в `/boot/loader/entries/`.)
 ```
 
 Обидва знімають захист ядра від одночасного доступу ACPI й драйвера до тих
@@ -361,18 +364,14 @@ journalctl -k -b | grep -i "Found.*chip"    # що він у підсумку в
 sudo ./tools/nvidia-diagnose.sh
 ```
 
-Дві речі, які інсталятор уже враховує, але їх корисно знати:
+Річ, яку інсталятор уже враховує, але її корисно знати:
 
 * **Capabilities.** Юніт свідомо забирає в демона всі capabilities — для
   запису в PWM вони не потрібні. Драйверу NVIDIA потрібні: без них
   `nvmlDeviceSetFanSpeed_v2` відповідає «no permission». На машинах з NVIDIA
   інсталятор кладе однорядковий drop-in, що їх повертає; решта ізоляції
   лишається.
-* **SELinux.** systemd обирає домен служби за міткою файлу, який запускає.
-  Скрипт у venv має мітку `lib_t`, і демон лишався б у `init_t`, звідки
-  політика не пускає до `/dev/nvidia*`. Тому юніт запускає інтерпретатор
-  (`bin_t`), і демон потрапляє в звичайний `unconfined_service_t`.
-  `fanctl doctor` показує домен.
+`fanctl doctor` показує стан.
 
 **Coolbits не потрібен.** Порада «увімкни `Option "Coolbits" "4"` в
 `xorg.conf`» стосується `nvidia-settings` і розширення NV-CONTROL X-сервера.
@@ -440,14 +439,14 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest   # справжнє зал
 сигнатури D-Bus-інтерфейсу, повний життєвий цикл демона на справжній шині
 (запуск, SIGTERM, SIGKILL, повернення керування прошивці) і вікно під
 offscreen-платформою Qt. GitHub Actions проганяє їх на кожен пуш на Ubuntu і
-Fedora.
+Arch.
 
 Інсталятор на різних дистрибутивах перевіряється в чистих контейнерах
 (потрібен podman або `ENGINE=docker`):
 
 ```bash
-./tools/test-install-in-containers.sh           # Fedora, Ubuntu, Debian, Arch, openSUSE
-./tools/test-install-in-containers.sh ubuntu    # лише один
+./tools/test-install-in-containers.sh           # Arch, Ubuntu, Debian, Fedora, openSUSE
+./tools/test-install-in-containers.sh arch      # лише один
 ```
 
 У контейнерах немає systemd, тож це перевіряє половину інсталятора, яка й
