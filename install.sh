@@ -90,6 +90,7 @@ packages_for() {  # $1 manager, $2 what
         pacman:venv)     echo python ;;
         pacman:sensors)  echo lm_sensors ;;
         pacman:pyside6)  echo pyside6 ;;
+        pacman:dasbus)   echo python-dasbus ;;
         zypper:gi)       echo python3-gobject ;;
         zypper:venv)     echo python3 ;;
         zypper:sensors)  echo sensors ;;
@@ -132,7 +133,9 @@ check_dependencies() {
         apt-get update -qq || true
     fi
 
-    python3 -c 'import gi' 2>/dev/null || required+=(gi)
+    # A bare 'import gi' is not enough: a stray namespace directory named gi
+    # imports fine but has no require_version. Ask for the real thing.
+    python3 -c 'import gi; gi.require_version("GLib", "2.0"); from gi.repository import GLib' 2>/dev/null || required+=(gi)
     python3 -c 'import venv, ensurepip' 2>/dev/null || required+=(venv)
     command -v sensors-detect >/dev/null || required+=(sensors)
 
