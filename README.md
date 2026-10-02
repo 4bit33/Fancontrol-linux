@@ -71,7 +71,7 @@ the service.
 
 **Tested automatically, without real hardware:**
 
-* 171 tests on every push, on Ubuntu and Fedora — curves, the importer, the
+* over 400 tests on every push, on Ubuntu, Fedora and Arch — curves, the importer, the
   control loop against simulated hardware, D-Bus, the daemon's lifecycle, the
   window;
 * installing the program (without the service) in clean Fedora 44,
@@ -119,6 +119,21 @@ Switching from `install.sh` to the package: `sudo ./install.sh --uninstall`
 first (your configuration in `/etc/fancontrol-linux` stays), then the commands
 above.
 
+### Arch Linux: from the AUR
+
+```bash
+yay -S fancontrol-linux
+yay -S fancontrol-linux-nvidia      # as well, on a machine with an NVIDIA GPU
+sudo systemctl enable --now fancontrold
+```
+
+Any AUR helper works; `yay` is only the most common. Updates come with
+`yay -Syu`, and the daemon restarts on its own. Unlike on Fedora,
+`fancontrol-linux-nvidia` is not pulled in automatically — install it if
+you have an NVIDIA card; it gives the daemon the permissions the driver needs
+to set GPU fan speeds. The AUR package is maintained by
+[W1zago](https://github.com/W1zago).
+
 ### Any distribution: install.sh
 
 ```bash
@@ -145,6 +160,7 @@ sudo ./install.sh --uninstall        # remove it (the configuration stays in /et
 
 ```bash
 sudo dnf upgrade --refresh fancontrol-linux             # from COPR
+yay -Syu                                                # from the AUR
 cd Fancontrol-linux && git pull && sudo ./install.sh    # with install.sh
 ```
 

@@ -31,6 +31,24 @@ jobs:
       - name: Shell scripts parse
         run: for f in install.sh tools/*.sh; do bash -n "$f" || exit 1; done
 
+  arch:
+    runs-on: ubuntu-24.04
+    container: docker.io/library/archlinux:latest
+    steps:
+      - name: System packages
+        run: |
+          pacman -Syu --noconfirm --needed git python python-gobject python-dasbus \
+            pyside6 dbus mesa findutils
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          python -m venv --system-site-packages .venv
+          .venv/bin/pip install -q pytest -e .
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: .venv/bin/python -m pytest -q
+
   fedora:
     runs-on: ubuntu-24.04
     container: registry.fedoraproject.org/fedora:44

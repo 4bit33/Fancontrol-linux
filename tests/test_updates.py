@@ -126,3 +126,25 @@ class _Recorder:
 
 def test_the_package_is_updated_with_dnf():
     assert updates.update_command(None, packaged=True) == "sudo dnf upgrade --refresh fancontrol-linux"
+
+
+def test_the_aur_package_is_updated_with_yay():
+    assert updates.update_command(None, packaged="aur") == "yay -Syu fancontrol-linux"
+
+
+def test_the_marker_on_disk_decides_which_package(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(updates, "sys", SimpleNamespace(prefix=str(tmp_path)))
+    assert updates.update_command(None) == \
+        "cd <the folder you installed from> && git pull && sudo ./install.sh"
+
+    marker = tmp_path / "share" / "fancontrol-linux" / "installed-by"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("aur\n")
+    assert updates.installed_by() == "aur"
+    assert updates.installed_by_package() is True
+    assert updates.update_command(None) == "yay -Syu fancontrol-linux"
+
+    marker.write_text("rpm\n")
+    assert updates.update_command(None) == "sudo dnf upgrade --refresh fancontrol-linux"

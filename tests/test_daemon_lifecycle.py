@@ -11,6 +11,7 @@ its fans stuck wherever the daemon had last set them, on every reboot.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _helper_env() -> dict[str, str]:
+    """Let the helper import the same fancontrol these tests import.
+
+    pytest puts the source tree on its own sys.path, which a child process
+    does not inherit; without this the helper only worked where the program
+    happened to be installed too, and failed in a packager's check().
+    """
+
+    import fancontrol
+
+    source = str(Path(fancontrol.__file__).resolve().parent.parent)
+    paths = [source, *filter(None, os.environ.get("PYTHONPATH", "").split(os.pathsep))]
+    return {**os.environ, "PYTHONPATH": os.pathsep.join(paths)}
+
+
 @pytest.fixture(scope="module")
 def lifecycle(tmp_path_factory):
     workdir = tmp_path_factory.mktemp("lifecycle")
@@ -35,6 +51,7 @@ def lifecycle(tmp_path_factory):
         ["dbus-run-session", "--", sys.executable, str(HELPER), str(workdir)],
         capture_output=True, text=True, timeout=180,
         cwd=str(Path(__file__).resolve().parent.parent),
+        env=_helper_env(),
     )
     if completed.returncode != 0 or not completed.stdout.strip():
         pytest.fail(f"helper failed: {completed.returncode}\n{completed.stderr[-2000:]}")

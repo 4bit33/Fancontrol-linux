@@ -1,0 +1,17 @@
+# Restart the daemon after either package is installed, upgraded or removed,
+# so it runs the new code and picks up the NVIDIA drop-in (or its removal).
+# On a fresh install the service is not running yet, and try-restart leaves it
+# alone. Runs after systemd's own daemon-reload hook (hooks run in name
+# order), so the unit and drop-in it restarts with are the new ones.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = fancontrol-linux
+Target = fancontrol-linux-nvidia
+
+[Action]
+Description = Restarting fancontrold...
+When = PostTransaction
+Exec = /usr/bin/systemctl try-restart fancontrold.service

@@ -22,4 +22,4 @@ git ls-remote --exit-code --tags "$repo" "refs/tags/$tag" >/dev/null \
 
 exec copr-cli buildscm "$COPR_PROJECT" \
     --clone-url "$repo" --commit "$tag" \
-    --method make_srpm --spec fancontrol-linux.spec
+    --method make_srpm --spec packaging/fedora/fancontrol-linux.spec

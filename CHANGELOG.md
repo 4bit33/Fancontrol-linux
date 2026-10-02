@@ -2,6 +2,15 @@
 
 ## Unreleased (1.2.0)
 
+### Installing
+
+* An Arch Linux package in the AUR, maintained by W1zago: `yay -S
+  fancontrol-linux`, plus `fancontrol-linux-nvidia` on machines with an
+  NVIDIA card. Upgrades restart the daemon, the update notice gives the AUR
+  command, and `install.sh` refuses to write over the package. CI runs the
+  tests on Arch as well as Ubuntu and Fedora.
+* Packaging lives in `packaging/fedora/` and `packaging/arch/`.
+
 ### Window
 
 * Every fan card has a switch for who drives the fan: **Firmware**, **My

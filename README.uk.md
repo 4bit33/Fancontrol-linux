@@ -70,7 +70,7 @@
 
 **Перевірено автоматично, без справжнього заліза:**
 
-* 171 тест на кожен пуш, на Ubuntu і Fedora — криві, імпорт, рушій на
+* понад 400 тестів на кожен пуш, на Ubuntu, Fedora й Arch — криві, імпорт, рушій на
   симуляторі заліза, D-Bus, життєвий цикл демона, вікно;
 * встановлення програми (без служби) у чистих контейнерах Fedora 44,
   Ubuntu 24.04, Debian trixie, Arch і openSUSE Tumbleweed.
@@ -115,6 +115,21 @@ sudo systemctl enable --now fancontrold
 Перехід з `install.sh` на пакет: спершу `sudo ./install.sh --uninstall`
 (налаштування в `/etc/fancontrol-linux` лишаться), потім команди вище.
 
+### Arch Linux: з AUR
+
+```bash
+yay -S fancontrol-linux
+yay -S fancontrol-linux-nvidia      # ще й це, якщо є відеокарта NVIDIA
+sudo systemctl enable --now fancontrold
+```
+
+Підійде будь-який помічник для AUR, `yay` — лише найпоширеніший. Оновлення
+приходять із `yay -Syu`, а служба перезапускається сама. На відміну від
+Fedora, `fancontrol-linux-nvidia` сам не встановиться — поставте його, якщо
+у вас відеокарта NVIDIA: він дає службі права, без яких драйвер не дозволяє
+керувати її вентиляторами. Пакет в AUR підтримує
+[W1zago](https://github.com/W1zago).
+
 ### Будь-який дистрибутив: install.sh
 
 ```bash
@@ -141,6 +156,7 @@ sudo ./install.sh --uninstall        # прибрати (конфіг лишит
 
 ```bash
 sudo dnf upgrade --refresh fancontrol-linux             # з COPR
+yay -Syu                                                # з AUR
 cd Fancontrol-linux && git pull && sudo ./install.sh    # через install.sh
 ```
 

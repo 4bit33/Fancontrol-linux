@@ -90,6 +90,7 @@ packages_for() {  # $1 manager, $2 what
         pacman:venv)     echo python ;;
         pacman:sensors)  echo lm_sensors ;;
         pacman:pyside6)  echo pyside6 ;;
+        pacman:dasbus)   echo python-dasbus ;;
         zypper:gi)       echo python3-gobject ;;
         zypper:venv)     echo python3 ;;
         zypper:sensors)  echo sensors ;;
@@ -132,7 +133,9 @@ check_dependencies() {
         apt-get update -qq || true
     fi
 
-    python3 -c 'import gi' 2>/dev/null || required+=(gi)
+    # A bare 'import gi' is not enough: a stray namespace directory named gi
+    # imports fine but has no require_version. Ask for the real thing.
+    python3 -c 'import gi; gi.require_version("GLib", "2.0"); from gi.repository import GLib' 2>/dev/null || required+=(gi)
     python3 -c 'import venv, ensurepip' 2>/dev/null || required+=(venv)
     command -v sensors-detect >/dev/null || required+=(sensors)
 
@@ -244,6 +247,12 @@ refuse_over_package() {
     if command -v rpm >/dev/null && rpm -q fancontrol-linux >/dev/null 2>&1; then
         red "fancontrol-linux is installed as a package; update it with:"
         red "    sudo dnf upgrade --refresh fancontrol-linux"
+        exit 1
+    fi
+    # And so does the AUR package; writing over it would break pacman's view.
+    if command -v pacman >/dev/null && pacman -Q fancontrol-linux >/dev/null 2>&1; then
+        red "fancontrol-linux is installed as a package; update it with:"
+        red "    yay -Syu fancontrol-linux"
         exit 1
     fi
 }
