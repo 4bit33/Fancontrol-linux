@@ -90,6 +90,25 @@ CATALOG: dict[str, str] = {
     "Image files ({list});;All files (*)": "Файли зображень ({list});;Усі файли (*)",
     "This file could not be read as an image.":
         "Цей файл не вдалося прочитати як зображення.",
+    "Auto curves": "Автокриві",
+    "Build one curve per fan, each reading a suitable temperature sensor.":
+        "Створити по кривій на вентилятор, кожна читатиме підхожий датчик температури.",
+    "There are no fans to attach curves to. Create standalone "
+    "curves that only watch temperatures?":
+        "Немає вентиляторів, до яких прив'язати криві. Створити окремі "
+        "криві, які лише показують температури?",
+    "No temperature sensors were found.":
+        "Датчиків температури не знайдено.",
+    "Every sensor already has a curve.":
+        "Кожен датчик уже має криву.",
+    "Every fan already has a curve.":
+        "Кожен вентилятор уже має криву.",
+    "Create {count} curves?":
+        "Створити кривих: {count}?",
+    "Fans that already have a curve are left alone; "
+    "the rest are switched to their new curves.":
+        "Вентилятори, які вже мають криву, не чіпаються; "
+        "решта перемикаються на нові криві.",
     "Revolutions per minute": "Оберти за хвилину",
     "Percent": "Відсотки",
     "Percent comes from nbfc, which talks to the embedded controller.\n"

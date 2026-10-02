@@ -14,6 +14,9 @@
 * Cryptic sensor labels get friendly display names (Tctl becomes CPU, edge
   becomes GPU); a manual rename always wins. The inventory keeps the kernel's
   names, so Windows imports match exactly as before.
+* "Auto curves" builds one curve per fan that has none, each reading
+  a suitable temperature sensor, and switches those fans to their new curves.
+  With nothing controllable it offers standalone CPU/GPU watcher curves instead.
 
 ### Installing
 

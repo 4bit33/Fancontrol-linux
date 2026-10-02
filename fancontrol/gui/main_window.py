@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..core.models import Config, validate
+from ..core import autocurves
 from .client import BaseProxy, ProxyError
 from . import i18n, names, nbfc, theme, updates
 from .i18n import tr
@@ -389,6 +390,12 @@ class MainWindow(QMainWindow):
         action_add = QAction(QIcon.fromTheme("list-add"), tr("Add curve"), self)
         action_add.triggered.connect(self._add_curve)
         toolbar.addAction(action_add)
+
+        action_auto = QAction(QIcon.fromTheme("document-new"), tr("Auto curves"), self)
+        action_auto.setToolTip(tr(
+            "Build one curve per fan, each reading a suitable temperature sensor."))
+        action_auto.triggered.connect(self._auto_curves)
+        toolbar.addAction(action_auto)
 
         action_import = QAction(
             QIcon.fromTheme("document-import"), tr("Import from FanControl…"), self
@@ -818,6 +825,68 @@ class MainWindow(QMainWindow):
             return
         self.config.curves.append(curve)
         self._after_curves_changed()
+
+    def _auto_curves(self) -> None:
+        """Build one curve per fan that has none, each on a suitable sensor."""
+
+        temps = self.inventory.get("temperatures", [])
+        if not self.config.controls:
+            self._auto_standalone(temps)
+            return
+        assignments = autocurves.plan(self.config, temps)
+        if not assignments:
+            QMessageBox.information(
+                self, tr("Auto curves"),
+                tr("Every fan already has a curve."))
+            return
+        lines = [self._assignment_line(a, temps) for a in assignments]
+        if QMessageBox.question(
+            self, tr("Auto curves"),
+            tr("Create {count} curves?", count=len(assignments)) + "\n\n"
+            + "\n".join(lines) + "\n\n"
+            + tr("Fans that already have a curve are left alone; "
+                 "the rest are switched to their new curves."),
+        ) != QMessageBox.Yes:
+            return
+        autocurves.apply(self.config, assignments)
+        self._after_curves_changed()
+
+    def _auto_standalone(self, temps: list) -> None:
+        """Curves that watch temperatures, for machines with no fans to drive."""
+
+        assignments = autocurves.plan_standalone(self.config, temps)
+        if not assignments:
+            if not temps:
+                QMessageBox.information(
+                    self, tr("Auto curves"),
+                    tr("No temperature sensors were found."))
+            else:
+                QMessageBox.information(
+                    self, tr("Auto curves"),
+                    tr("Every sensor already has a curve."))
+            return
+        lines = [self._assignment_line(a, temps) for a in assignments]
+        if QMessageBox.question(
+            self, tr("Auto curves"),
+            tr("There are no fans to attach curves to. Create standalone "
+               "curves that only watch temperatures?") + "\n\n"
+            + "\n".join(lines),
+        ) != QMessageBox.Yes:
+            return
+        autocurves.apply(self.config, assignments)
+        self._after_curves_changed()
+
+    def _assignment_line(self, assignment, temps: list) -> str:
+        chip = ""
+        for temp in temps:
+            if temp.get("id") == assignment.sensor_id:
+                chip = temp.get("device", {}).get("label", "")
+                break
+        sensor = (names.friendly_name(chip, assignment.sensor_name)
+                  or assignment.sensor_name)
+        if assignment.control_name:
+            return f"{assignment.control_name} → {sensor}"
+        return f"{assignment.curve_name} → {sensor}"
 
     def _edit_curve_by_id(self, curve_id: str) -> None:
         curve = self.config.curve_by_id(curve_id)
