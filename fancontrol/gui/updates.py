@@ -61,16 +61,41 @@ def source_dir() -> Path | None:
     return Path(text) if text and Path(text, ".git").is_dir() else None
 
 
+def installed_by() -> str | None:
+    """Which package the program came from: ``"rpm"``, ``"aur"``, or None for
+    install.sh. The packager writes the marker; see fancontrol-linux.spec and
+    PKGBUILD."""
+
+    try:
+        text = (Path(sys.prefix) / "share" / "fancontrol-linux" / "installed-by").read_text()
+    except OSError:
+        return None
+    return text.strip().lower() or None
+
+
 def installed_by_package() -> bool:
-    """True when the program came from the RPM rather than install.sh."""
-    return (Path(sys.prefix) / "share" / "fancontrol-linux" / "installed-by").exists()
+    """True when the program came from a package rather than install.sh."""
+    return installed_by() is not None
 
 
-def update_command(source: Path | None = None, packaged: bool | None = None) -> str:
-    """What to type to update. Both install.sh and the package restart the
-    daemon themselves."""
+def update_command(source: Path | None = None,
+                   packaged: bool | str | None = None) -> str:
+    """What to type to update. Both install.sh and the packages restart the
+    daemon themselves. ``packaged`` is usually left out so the marker on disk
+    decides; tests pass ``True`` (any package), ``"aur"``/``"rpm"``, or
+    ``False`` (a git clone)."""
 
-    if packaged if packaged is not None else installed_by_package():
+    if packaged is None:
+        kind = installed_by()
+        packaged = kind is not None
+    elif isinstance(packaged, str):
+        kind = packaged.lower()
+        packaged = True
+    else:
+        kind = installed_by() if packaged else None
+    if packaged:
+        if kind == "aur":
+            return "yay -Syu fancontrol-linux"
         return "sudo dnf upgrade --refresh fancontrol-linux"
     folder = shlex.quote(str(source)) if source else "<the folder you installed from>"
     return f"cd {folder} && git pull && sudo ./install.sh"

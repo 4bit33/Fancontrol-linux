@@ -246,6 +246,12 @@ refuse_over_package() {
         red "    sudo dnf upgrade --refresh fancontrol-linux"
         exit 1
     fi
+    # And so does the AUR package; writing over it would break pacman's view.
+    if command -v pacman >/dev/null && pacman -Q fancontrol-linux >/dev/null 2>&1; then
+        red "fancontrol-linux is installed as a package; update it with:"
+        red "    yay -Syu fancontrol-linux"
+        exit 1
+    fi
 }
 
 install_all() {

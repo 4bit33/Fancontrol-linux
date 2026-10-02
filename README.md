@@ -106,12 +106,14 @@ The issue template asks for the rest.
 
 ```bash
 yay -S fancontrol-linux
+# on machines with an NVIDIA GPU, as well:
+yay -S fancontrol-linux-nvidia
 sudo systemctl enable --now fancontrold
 ```
 
 Updates then come with the rest of the system (`yay -Syu`), and the daemon
-restarts on its own. With the NVIDIA driver installed, the NVIDIA sandbox
-drop-in is included automatically — it gives the daemon the permissions the
+restarts on its own. `fancontrol-linux-nvidia` is a one-line sandbox drop-in
+for machines with an NVIDIA GPU — it gives the daemon the permissions the
 driver needs to set GPU fan speeds.
 
 Switching from `install.sh` to the package: `sudo ./install.sh --uninstall`

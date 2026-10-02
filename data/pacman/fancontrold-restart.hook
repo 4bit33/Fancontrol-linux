@@ -1,0 +1,13 @@
+# Restart the daemon after the package is installed or upgraded, so the new
+# code actually runs. Fresh installs are unaffected: try-restart on a service
+# that was never enabled is a successful no-op.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = fancontrol-linux
+
+[Action]
+Description = Restarting fancontrold...
+When = PostTransaction
+Exec = /usr/bin/systemctl try-restart fancontrold.service

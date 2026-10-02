@@ -2,6 +2,14 @@
 
 ## Unreleased (1.2.0)
 
+### Installing
+
+* An Arch package: `PKGBUILD` (with `.SRCINFO`) building `fancontrol-linux`
+  and a `fancontrol-linux-nvidia` split package with the sandbox drop-in for
+  NVIDIA GPUs — `yay -S fancontrol-linux`. The update notice gives the `yay`
+  command when the program came from the AUR, `install.sh` refuses to write
+  over the AUR package, and CI runs the tests in an Arch container.
+
 ### Window
 
 * Every fan card has a switch for who drives the fan: **Firmware**, **My
