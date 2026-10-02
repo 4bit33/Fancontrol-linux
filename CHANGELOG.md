@@ -11,6 +11,9 @@
 * Fan speeds can show percent from nbfc instead of revolutions, for laptops
   whose kernel tachometers never move. A "Fan speeds" row in Settings switches
   it; without nbfc running it quietly falls back to revolutions.
+* Cryptic sensor labels get friendly display names (Tctl becomes CPU, edge
+  becomes GPU); a manual rename always wins. The inventory keeps the kernel's
+  names, so Windows imports match exactly as before.
 
 ### Installing
 

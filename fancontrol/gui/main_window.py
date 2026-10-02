@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..core.models import Config, validate
 from .client import BaseProxy, ProxyError
-from . import i18n, nbfc, theme, updates
+from . import i18n, names, nbfc, theme, updates
 from .i18n import tr
 from .widgets.cards import CURVE_CARD_WIDTH, AddCard, CurveCard, Section, SensorCard
 from .widgets.control_card import ControlCard
@@ -557,7 +557,7 @@ class MainWindow(QMainWindow):
         for section in (self.temperatures_section, self.speeds_section):
             section.clear()
         self.sensor_cards.clear()
-        names = self.config.sensor_names
+        renames = self.config.sensor_names
         hidden_ids = set(self.config.hidden_sensors)
 
         for kind, section, key in (
@@ -571,8 +571,12 @@ class MainWindow(QMainWindow):
                 hidden += is_hidden
                 if is_hidden and not section.showing_hidden():
                     continue
+                chip = entry.get("device", {}).get("label", "")
+                display = (renames.get(entry["id"])
+                           or names.friendly_name(chip, entry["name"])
+                           or entry["name"])
                 card = SensorCard(
-                    entry["id"], names.get(entry["id"]) or entry["name"],
+                    entry["id"], display,
                     entry.get("device", {}).get("label", ""), kind,
                 )
                 card.renameRequested.connect(self._rename_sensor)
