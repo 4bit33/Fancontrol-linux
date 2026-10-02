@@ -8,6 +8,9 @@
   background picture stretched behind the cards. Applies right away, kept per
   user; `fancontrol-gui --theme dark` (or `FANCONTROL_THEME`) overrides it for
   one start.
+* Fan speeds can show percent from nbfc instead of revolutions, for laptops
+  whose kernel tachometers never move. A "Fan speeds" row in Settings switches
+  it; without nbfc running it quietly falls back to revolutions.
 
 ### Installing
 

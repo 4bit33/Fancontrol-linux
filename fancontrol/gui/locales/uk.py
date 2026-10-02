@@ -90,6 +90,12 @@ CATALOG: dict[str, str] = {
     "Image files ({list});;All files (*)": "Файли зображень ({list});;Усі файли (*)",
     "This file could not be read as an image.":
         "Цей файл не вдалося прочитати як зображення.",
+    "Revolutions per minute": "Оберти за хвилину",
+    "Percent": "Відсотки",
+    "Percent comes from nbfc, which talks to the embedded controller.\n"
+    "Falls back to revolutions when nbfc is not running.":
+        "Відсотки беруться з nbfc, який говорить із вбудованим контролером.\n"
+        "Якщо nbfc не запущено — показуються оберти.",
     "The new language is used from the next start. Restart the window now?":
         "Нова мова діятиме з наступного запуску. Перезапустити вікно зараз?",
     "Close and reopen the window to switch.": "Закрийте й знову відкрийте вікно, щоб змінити мову.",

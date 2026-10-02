@@ -214,7 +214,8 @@ at, an empty fan header. Hiding only tidies the window: a hidden curve still
 drives its fans. **Show hidden** in a section's header brings them back.
 
 The theme (system, dark or light, plus an optional background picture) and
-the language live in **Settings** and are kept per user.
+the language live in **Settings** and are kept per user. Fan speeds can show
+revolutions or, where the kernel tachometers read zero, percent from nbfc.
 
 The window speaks English, or Ukrainian on a Ukrainian desktop. To choose
 yourself, pick a language in **Settings** (kept per user), or start it with

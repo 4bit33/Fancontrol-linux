@@ -367,11 +367,13 @@ class SensorCard(Card):
             " border-bottom-left-radius: 8px;"
         )
 
-    def update_value(self, value: float | None) -> None:
+    def update_value(self, value: float | None, unit: str = "rpm") -> None:
         if value is None:
             self.value.setText(tr("unavailable") if self.kind == "temperature" else "—")
         elif self.kind == "temperature":
             self.value.setText(f"{value:.1f} °C")
+        elif unit == "percent":
+            self.value.setText(f"{value:.0f}%")
         else:
             self.value.setText(tr("{rpm} rpm", rpm=int(value)))
         self._paint_stripe(value)

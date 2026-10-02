@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..core.models import Config, validate
 from .client import BaseProxy, ProxyError
-from . import i18n, theme, updates
+from . import i18n, nbfc, theme, updates
 from .i18n import tr
 from .widgets.cards import CURVE_CARD_WIDTH, AddCard, CurveCard, Section, SensorCard
 from .widgets.control_card import ControlCard
@@ -139,6 +139,17 @@ class SettingsDialog(QDialog):
         bg_box.setLayout(bg_row)
         self._refresh_bg_label()
 
+        self.fan_display = QComboBox()
+        self.fan_display.addItem(tr("Revolutions per minute"), "rpm")
+        self.fan_display.addItem(tr("Percent"), "percent")
+        self._initial_display = nbfc.saved_display()
+        self.fan_display.setCurrentIndex(
+            max(0, self.fan_display.findData(self._initial_display)))
+        self.fan_display.setToolTip(tr(
+            "Percent comes from nbfc, which talks to the embedded controller.\n"
+            "Falls back to revolutions when nbfc is not running."))
+        self.fan_display.currentIndexChanged.connect(self._preview_display)
+
         form.addRow(tr("Update every"), self.interval)
         form.addRow(tr("Force full speed above"), self.critical)
         form.addRow(tr("Speed when a sensor fails"), self.failsafe)
@@ -147,6 +158,7 @@ class SettingsDialog(QDialog):
         form.addRow("", self.check_updates)
         form.addRow(tr("Theme"), self.theme_name)
         form.addRow(tr("Background image"), bg_box)
+        form.addRow(tr("Fan speeds"), self.fan_display)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -158,6 +170,16 @@ class SettingsDialog(QDialog):
         """The (theme, background) the dialog opened with, for reverting."""
 
         return self._initial_theme
+
+    def initial_display(self) -> str:
+        """The fan display mode the dialog opened with, for reverting."""
+
+        return self._initial_display
+
+    def _preview_display(self) -> None:
+        """Remember how fan speeds show; the next status tick repaints."""
+
+        nbfc.save_display(self.fan_display.currentData())
 
     def _preview_theme(self) -> None:
         """Apply the chosen theme at once and remember it."""
@@ -654,14 +676,30 @@ class MainWindow(QMainWindow):
             card.update_status(status)
 
         readings = {**status.get("temperatures", {}), **status.get("fans", {})}
+        unit = "rpm"
+        if nbfc.saved_display() == "percent":
+            speed = nbfc.current_speed()
+            if speed is not None:
+                # nbfc exposes one EC fan channel; every tile shows it.
+                unit = "percent"
+                readings = {**readings,
+                            **{sid: speed for sid in self._fan_ids()}}
         for sensor_id, card in self.sensor_cards.items():
-            card.update_value(readings.get(sensor_id))
+            if card.kind == "fan":
+                card.update_value(readings.get(sensor_id), unit=unit)
+            else:
+                card.update_value(readings.get(sensor_id))
 
         self._follow_calibrations(status)
 
         messages = status.get("messages", [])
         if messages:
             self.statusBar().showMessage(messages[0], 4000)
+
+    def _fan_ids(self) -> list[str]:
+        """Ids of the fan tiles, in inventory order."""
+
+        return [entry["id"] for entry in self.inventory.get("fans", [])]
 
     def _follow_calibrations(self, status: dict) -> None:
         """Show progress while a calibration runs, and react when it ends."""
@@ -823,12 +861,15 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self.config, self)
         if dialog.exec() != QDialog.Accepted:
-            # The theme previews live, so put back what was there - the look
-            # and the saved choice alike.
+            # The theme and the fan display preview live, so put back
+            # what was there - the look and the saved choices alike.
             name, background = dialog.initial_theme()
             theme.save_theme(name)
             theme.save_background(background)
             theme.apply(QApplication.instance(), name, background)
+            nbfc.save_display(dialog.initial_display())
+            if self.latest_status:
+                self._on_status(self.latest_status)
             return
         dialog.apply_to(self.config)
         self._push_config()
