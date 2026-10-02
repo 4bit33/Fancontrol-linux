@@ -453,6 +453,10 @@ The configuration is plain JSON and can be edited by hand;
 
 ## Development
 
+How we work together — branches, pull requests, who reviews what, signed
+commits — is in [CONTRIBUTING.md](CONTRIBUTING.md); how a release goes out to
+GitHub, COPR and the AUR, in [RELEASING.md](RELEASING.md).
+
 ```bash
 python3 -m venv --system-site-packages .venv     # PyGObject from the distribution
 .venv/bin/pip install -e '.[dev,gui,daemon]'
@@ -464,8 +468,8 @@ The tests cover the curves, the importer against a **real** version 270
 end-to-end "the machine actually cools down"), the D-Bus interface's
 signatures, the daemon's whole lifecycle on a real bus (start, SIGTERM,
 SIGKILL, handing control back to the firmware), and the window under Qt's
-offscreen platform. GitHub Actions runs them on Ubuntu and Fedora for every
-push.
+offscreen platform. GitHub Actions runs them on Ubuntu, Fedora and Arch for
+every push.
 
 The installer is checked on different distributions in clean containers
 (podman, or `ENGINE=docker`):

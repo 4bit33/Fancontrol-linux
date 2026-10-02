@@ -1,0 +1,15 @@
+# Who is asked to review a pull request. The last matching line wins.
+# See CONTRIBUTING.md.
+
+*                          @4bit33
+
+/packaging/fedora/         @4bit33
+/.copr/                    @4bit33
+/tools/copr-build.sh       @4bit33
+
+/packaging/arch/           @W1zago
+/tools/aur-publish.sh      @W1zago
+
+# Every other distribution goes through install.sh; both of us test it.
+/install.sh                @4bit33 @W1zago
+/tools/test-install-in-containers.sh  @4bit33 @W1zago

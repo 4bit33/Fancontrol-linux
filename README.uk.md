@@ -445,6 +445,10 @@ fancontrold` перечитає його.
 
 ## Розробка
 
+Як ми працюємо разом — гілки, pull request-и, хто що переглядає, підписані
+коміти — описано в [CONTRIBUTING.md](CONTRIBUTING.md) (англійською), а як
+виходить реліз на GitHub, у COPR і AUR — у [RELEASING.md](RELEASING.md).
+
 ```bash
 python3 -m venv --system-site-packages .venv     # PyGObject — з дистрибутива
 .venv/bin/pip install -e '.[dev,gui,daemon]'
@@ -455,8 +459,8 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest   # справжнє зал
 рушій на симуляторі (включно з наскрізним «машина реально охолоджується»),
 сигнатури D-Bus-інтерфейсу, повний життєвий цикл демона на справжній шині
 (запуск, SIGTERM, SIGKILL, повернення керування прошивці) і вікно під
-offscreen-платформою Qt. GitHub Actions проганяє їх на кожен пуш на Ubuntu і
-Fedora.
+offscreen-платформою Qt. GitHub Actions проганяє їх на кожен пуш на Ubuntu,
+Fedora й Arch.
 
 Інсталятор на різних дистрибутивах перевіряється в чистих контейнерах
 (потрібен podman або `ENGINE=docker`):
