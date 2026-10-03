@@ -71,11 +71,15 @@ def settings():
     return QSettings(*i18n.SETTINGS_SCOPE)
 
 
+#: What the fan-speed chooser offers.
+DISPLAYS = ("rpm", "percent")
+
+
 def saved_display(store=None) -> str:
     """"rpm" or "percent": what the fan tiles show."""
 
     value = (store or settings()).value(DISPLAY_KEY, "rpm")
-    return value if value in ("rpm", "percent") else "rpm"
+    return value if value in DISPLAYS else "rpm"
 
 
 def save_display(mode: str, store=None) -> None:

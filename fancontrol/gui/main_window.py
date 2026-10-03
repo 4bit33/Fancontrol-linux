@@ -115,9 +115,10 @@ class SettingsDialog(QDialog):
         self.check_updates.setChecked(updates.checking_enabled())
 
         self.theme_name = QComboBox()
-        self.theme_name.addItem(tr("As the system"), "system")
-        self.theme_name.addItem(tr("Dark"), "dark")
-        self.theme_name.addItem(tr("Light"), "light")
+        theme_system, theme_dark, theme_light = theme.THEMES
+        self.theme_name.addItem(tr("As the system"), theme_system)
+        self.theme_name.addItem(tr("Dark"), theme_dark)
+        self.theme_name.addItem(tr("Light"), theme_light)
         self._initial_theme = theme.effective()
         self.theme_name.setCurrentIndex(
             max(0, self.theme_name.findData(self._initial_theme[0])))
@@ -141,8 +142,9 @@ class SettingsDialog(QDialog):
         self._refresh_bg_label()
 
         self.fan_display = QComboBox()
-        self.fan_display.addItem(tr("Revolutions per minute"), "rpm")
-        self.fan_display.addItem(tr("Percent"), "percent")
+        display_rpm, display_percent = nbfc.DISPLAYS
+        self.fan_display.addItem(tr("Revolutions per minute"), display_rpm)
+        self.fan_display.addItem(tr("Percent"), display_percent)
         self._initial_display = nbfc.saved_display()
         self.fan_display.setCurrentIndex(
             max(0, self.fan_display.findData(self._initial_display)))

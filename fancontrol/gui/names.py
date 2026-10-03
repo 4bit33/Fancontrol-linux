@@ -20,7 +20,7 @@ FRIENDLY = {
 }
 
 _FALLBACK_FAN = re.compile(r"^hp fan(\d+)$")
-_FALLBACK_BOARD = re.compile(r"^acpitz temp(\d+)$")
+_FALLBACK_BOARD = re.compile(r"^temp(\d+)$")
 _SSD_SENSOR = re.compile(r"^Sensor (\d+)$")
 
 
