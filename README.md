@@ -60,9 +60,8 @@ Plainly, so you know what to expect.
 
 | | |
 |---|---|
-| Motherboard | Gigabyte B760 Gaming X AX DDR4, ITE IT8689E, out-of-tree `it87` driver |
-| CPU | Intel (`coretemp`) |
-| Graphics | NVIDIA GeForce RTX 3070, driver 610 |
+| CPU | AMD Ryzen7-4700U |
+| Graphics | AMD Radeon-Graphics |
 | System | Arch Linux, KDE Plasma (Wayland) |
 
 Everything works there: four motherboard fans, both graphics card fans,
