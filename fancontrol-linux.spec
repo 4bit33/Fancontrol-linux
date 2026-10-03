@@ -1,5 +1,5 @@
 Name:           fancontrol-linux
-Version:        1.1.1
+Version:        1.2.0
 Release:        1%{?dist}
 Summary:        Fan control in the shape of FanControl for Windows
 
@@ -139,6 +139,10 @@ systemctl try-restart fancontrold.service >/dev/null 2>&1 || :
 
 
 %changelog
+* Sat Oct 03 2026 4bit33 <luisadgg5@gmail.com> - 1.2.0-1
+- Theme chooser, nbfc fan percent display, friendly sensor names, auto curves,
+  Arch package, fan firmware/curve/both switch
+
 * Thu Sep 24 2026 4bit33 <luisadgg5@gmail.com> - 1.1.1-1
 - First release as a Fedora package
 
