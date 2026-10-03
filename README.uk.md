@@ -59,9 +59,8 @@
 
 | | |
 |---|---|
-| Плата | Gigabyte B760 Gaming X AX DDR4, чип ITE IT8689E, позаядерний драйвер `it87` |
-| Процесор | Intel (`coretemp`) |
-| Відеокарта | NVIDIA GeForce RTX 3070, драйвер 610 |
+| Процесор | AMD Ryzen7-4700U |
+| Відеокарта | AMD Radeon-Graphics |
 | Система | Arch Linux, KDE Plasma (Wayland) |
 
 Там працює все: чотири вентилятори плати, обидва вентилятори відеокарти,
